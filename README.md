@@ -309,7 +309,7 @@ trace
 4. 82 分：pfxsum + halo + dbbuf
 5. 87 分：pfxsum + halo + dbbuf + wei-sta
 6. 92 分：pfxsum + halo + dbbuf + wei-sta + out-sta
-7. 96 分：fan(n=16) + halo + dbbuf + wei-sta + out-sta
+7. 94 分：fan(n=16) + halo + dbbuf + wei-sta + out-sta
 8. 100 分：fan(any) + halo + dbbuf + wei-sta + out-sta
 
 ### 提交时间
