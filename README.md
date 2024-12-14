@@ -66,7 +66,7 @@ $A$ 矩阵是稀疏的，每一轮读入的 $N$ 个值可能覆盖了多行，�
 * PfxSum：硬件前缀和，可以计算每个元素结尾的前缀和
 * FAN Network：参考论文 [SIGMA: A Sparse and Irregular GEMM Accelerator with Flexible Interconnects for DNN Training](https://doi.org/10.1109/HPCA47549.2020.00015)
 
-在本次 lab 里，规约单元的接口如下所示。其中 `split[i]` 为 1 表示第 i 个元素和 i+1 号元素在不同的行，`out_idx[i]` 表示输出第 i 位应该是前多少的前缀和。例如，在上图的离子中 `out_idx[1] = 2`，表示输出的第 1 个数 `F` 应该对应前缀和中第 2 个元素，即 `cC` 下面的 `F`。
+在本次 lab 里，规约单元的接口如下所示。其中 `split[i]` 为 1 表示第 i 个元素和 i+1 号元素在不同的行，`out_idx[i]` 表示输出第 i 位的部分和所在的位置。例如，在上图的离子中 `out_idx[1] = 2`，表示输出序列的第 1 个数 `F` 应该对应部分和序列中第 2 个元素，即 `cC` 下面的 `F`。
 
 ```verilog
 module RedUnit(
@@ -104,7 +104,7 @@ module PE(
 );
 ```
 
-时序图如下所示，在 `start` 的同时，输入 `ptr` 和第一部分的数据。接着继续输入 `lhs` 矩阵的其他值。在经过 `delay` 个 cycle 后，依次输出结果。第一次输出的 `o[0]` 包括了 `c[3:0]` 对应的行的结果。输出的周期数和 lhs_col 的输入的周期数是一样的。
+时序图如下所示，在 `start` 的同时，输入 `ptr` 和第一部分的数据。接着继续输入 `lhs` 矩阵的其他值。在经过 `delay` 个 cycle 后，依次输出结果。第一次输出的 `o[0]` 包括了 `c[3:0]` 对应的行的结果。输出的周期数和 lhs_col 的输入的周期数是一样的。在读入 `lhs` 的时候，`rhs` 也会同时读入，读入过程中 `rhs` 的值保持不变。
 
 <!--
 {signal: [
