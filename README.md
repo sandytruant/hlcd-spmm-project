@@ -2,6 +2,9 @@
 
 在这个 Project 里，你需要写一个 SpMM 的硬件加速器。这个 repo 会储存后续的代码更新。
 
+**第一次评测时间：12月27日**
+**第二次评测时间：1月10日**
+
 ## SpMM 介绍
 
 与稀疏矩阵相关的一些算子：
@@ -296,10 +299,21 @@ trace
 | N=16  | 0    | 8      | 14  | 4    | 4     | 4       | 4       |
 | N=any | 2    | 12     | 20  | 5    | 5     | 5       | 5       |
 
-* tree, pfxsum, fan：Reduction Unit 的实现方法
+* tree, pfxsum, fan：Reduction Unit 的实现方法（三选一）
 * halo：PE 里实现 halo adder，支持跨边界求和
 * dbbuf：rhs buf 和 output buf 支持双 buffer
 * wei-sta, out-sta：支持两种 stationary 模式
+
+N=any 保证 N 是 2 的幂，且大于等于 4。有时候，你可能实现了某个模块的 N=16 版本，另一个模块的 N=any 版本。你可以用 `generate if` 来做分割：
+
+```verilog
+module RedUnit(...);
+generate
+    if(`N == 16) RedUnit_16 rdu(.*);
+    else RedUnit_any rdu(.*);
+endgenerate
+endmodule
+```
 
 下面给一个建议的实现顺序：
 
@@ -321,3 +335,6 @@ trace
 * redunit 能够计算全部和，可以用加法树实现
 * PE 能够正常得将数据交给 redunit
 * PE 阵列能够读入右矩阵，读入左矩阵，完成一次计算，然后输出
+
+**第一次评测时间：12月27日**
+**第二次评测时间：1月10日**
