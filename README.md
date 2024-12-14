@@ -1,6 +1,6 @@
 # SpMM Project
 
-在这个 Project 里，你需要写一个 SpMM 的硬件加速器。
+在这个 Project 里，你需要写一个 SpMM 的硬件加速器。这个 repo 会储存后续的代码更新。
 
 ## SpMM 介绍
 
@@ -43,7 +43,7 @@ $$
 
 ### 总体介绍
 
-在这个 Project 中，你需要写一个 SpMM 加速器，该加速器能够支持一个稀疏矩阵和一个稠密矩阵的乘法。该加速器的架构如下图所示：
+在这个 Project 中，你需要写一个 SpMM 加速器，该加速器能够支持一个 NxN 的稀疏矩阵和一个 NxN 的稠密矩阵的乘法。该加速器的架构如下图所示：
 
 ![](figs/image-3.png)
 
@@ -121,6 +121,7 @@ module PE(
 ![](figs/image-9.png)
 
 **Halo Adder**：在计算部分和的时候，经常会出现一个 `row` 的值被拆成两部分的情况。我们可以将上一个周期的最后段部分和储存下来，delay 一个周期后加到下一个周期部分和的第一段上。
+* 稀疏矩阵是 NxN 的，稀疏矩阵的一行最多被拆成两段，而不会是三段。Halo Adder 里只需要保存一个元素。
 
 ### PE 阵列
 
@@ -154,6 +155,31 @@ module SpMM(
 ```
 
 下面给出了 PE 阵列通常计算矩阵乘法的时序图。最开始，rhs 的 buffer 是空的，阵列首先读入 rhs。当 rhs 读入完成，rhs buffer 非空的时候，允许输入 lhs。输入 lhs 后立刻开始计算，并在一段时间后放到 output buffer 里面。最后，再一次性将 output buffer 的矩阵输出。注意，**稠密矩阵输入/输出的基本单位是 4 行**。
+
+* 稠密矩阵会经过 N/4 个周期完成输入/输出，第 i 个周期输入 [i+3:i] 行的元素，第一个周期 start 信号为 1
+* 写移位寄存器的时候，请注意方向，先输入/输出的是第一行，不是最后一行
+
+<!--
+{signal: [
+  ['Rhs',
+   {name: 'rhs_ready',    wave: '010.......|.....'},
+   {name: 'rhs_start',    wave: '010.......|.....'},
+   {name: 'rhs_data',     wave: 'x3...x....|.....', data: ['rhs']},
+  ],
+  ['Lhs',
+   {name: 'lhs_ready_ns', wave: '0....10...|.....'},
+   {name: 'lhs_start',    wave: '0....10...|.....'},
+   {name: 'lhs_ptr',      wave: 'x....4x...|.....', data: ['ptr']},
+   {name: 'lhs_col',      wave: 'x....4...x|.....', data: ['col']},
+   {name: 'lhs_data',     wave: 'x....4...x|.....', data: ['data']},
+  ],
+  ['Out',
+   {name: 'out_ready',    wave: '0.........|10...'},
+   {name: 'out_start',    wave: '0.........|10...'},
+   {name: 'out_data',     wave: '0.........|5...x', data: ['out']}
+  ]
+]}
+-->
 
 ![](figs/image-10.png)
 
@@ -267,7 +293,7 @@ trace
 
 |       | tree | pfxsum | fan | halo | dbbuf | wei-sta | out-sta |
 | ----- | ---- | ------ | --- | ---- | ----- | ------- | ------- |
-| N=16  | 0    | 8      | 16  | 4    | 4     | 4       | 4       |
+| N=16  | 0    | 8      | 14  | 4    | 4     | 4       | 4       |
 | N=any | 2    | 12     | 20  | 5    | 5     | 5       | 5       |
 
 * tree, pfxsum, fan：Reduction Unit 的实现方法
@@ -286,4 +312,12 @@ trace
 7. 96 分：fan(n=16) + halo + dbbuf + wei-sta + out-sta
 8. 100 分：fan(any) + halo + dbbuf + wei-sta + out-sta
 
+### 提交时间
 
+两周后第一次评测，评测 60 分的版本，四周后第二次评测，评测剩下的 40 分。
+
+60 分的版本要求：每个 testbench 的第一个测试点能够通过
+
+* redunit 能够计算全部和，可以用加法树实现
+* PE 能够正常得将数据交给 redunit
+* PE 阵列能够读入右矩阵，读入左矩阵，完成一次计算，然后输出
