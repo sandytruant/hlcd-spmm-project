@@ -10,7 +10,7 @@
 与稀疏矩阵相关的一些算子：
 
 * **SpMM**：一般指稀疏矩阵乘稠密矩阵 (Sparse Matrix Multiplication)
-* **SpMV**：一般指稀疏矩阵乘稠密响亮 (Sparse Matrix Vector Multiplication)
+* **SpMV**：一般指稀疏矩阵乘稠密向量 (Sparse Matrix Vector Multiplication)
 * **SpMSpM**: 一般指稀疏矩阵乘稀疏矩阵
 * **SpMSpV**：一般指稀疏矩阵乘稀疏向量（常用于 bfs）
 
@@ -69,7 +69,7 @@ $A$ 矩阵是稀疏的，每一轮读入的 $N$ 个值可能覆盖了多行，�
 * PfxSum：硬件前缀和，可以计算每个元素结尾的前缀和
 * FAN Network：参考论文 [SIGMA: A Sparse and Irregular GEMM Accelerator with Flexible Interconnects for DNN Training](https://doi.org/10.1109/HPCA47549.2020.00015)
 
-在本次 lab 里，规约单元的接口如下所示。其中 `split[i]` 为 1 表示第 i 个元素和 i+1 号元素在不同的行，`out_idx[i]` 表示输出第 i 位的部分和所在的位置。例如，在上图的离子中 `out_idx[1] = 2`，表示输出序列的第 1 个数 `F` 应该对应部分和序列中第 2 个元素，即 `cC` 下面的 `F`。
+在本次 lab 里，规约单元的接口如下所示。其中 `split[i]` 为 1 表示第 i 个元素和 i+1 号元素在不同的行，`out_idx[i]` 表示输出第 i 位的部分和所在的位置。例如，在上图的例子中 `out_idx[1] = 2`，表示输出序列的第 1 个数 `F` 应该对应部分和序列中第 2 个元素，即 `cC` 下面的 `F`。
 
 ```verilog
 module RedUnit(
