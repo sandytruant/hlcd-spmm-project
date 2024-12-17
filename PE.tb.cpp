@@ -84,6 +84,7 @@ struct Data {
             }
             dut->lhs_start = 1;
         }
+        else dut->lhs_start = 0;
         for(int i = 0; i < n; i++) {
             dut->rhs[i] = rhs[i];
         }
