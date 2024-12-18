@@ -189,6 +189,7 @@ module SpMM(
 ![](https://svg.wavedrom.com/github/pku-liang/hlcd-spmm-project/main/figs/pe-array.json5)
 * 图片看不清可以点击图片查看
 
+
 <!-- ![](figs/image-10.png) -->
 
 阵列除了支持通常的 SpMM 外，还需要支持 Weight Stationary 和 Output Stationary
