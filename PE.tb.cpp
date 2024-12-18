@@ -82,9 +82,9 @@ struct Data {
             for(int i = 0; i < n; i++) {
                 dut->lhs_ptr[i] = ptr[i];
             }
-            dut->lhs_start = 1;
+            // dut->lhs_start = 1;
         }
-        else dut->lhs_start = 0;
+        // else dut->lhs_start = 0;
         for(int i = 0; i < n; i++) {
             dut->rhs[i] = rhs[i];
         }
@@ -252,6 +252,10 @@ static bool test_it(const char * vcd_file, Data data) {
     auto delay = dut->delay;
     auto num_el = dut->num_el;
     for(int i = 0; i < data.input_cycles + delay; i++) {
+        if(i == 0)
+            dut->lhs_start = 1;
+        else
+            dut->lhs_start = 0;
         if(i < data.input_cycles) {
             data.feed_next(&*dut);
         }
