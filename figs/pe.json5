@@ -1,0 +1,9 @@
+{signal: [
+  {name: 'clk',       wave: 'p....|.....'},
+  {name: 'lhs_start', wave: '010..|.....'},
+  {name: 'lhs_ptr',   wave: 'x3x..|.....', data: ['ptr']},
+  {name: 'lhs_col',   wave: 'x333x|.....', data: ['c[3:0]', 'c[7:4]', '...', '...']},
+  {name: 'lhs_data',  wave: 'x333x|.....', data: ['d[3:0]', 'd[7:4]', '...', '...']},
+  {name: 'rhs',       wave: 'x3..x|.....', data: ['rhs']},
+  {name: 'out',       wave: 'x....|333x.', data: ['o[0]', 'o[1]', 'o[2]']}
+]}

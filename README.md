@@ -121,7 +121,8 @@ module PE(
 ]}
 -->
 
-![](figs/image-9.png)
+![](https://svg.wavedrom.com/github/pku-liang/hlcd-spmm-project/main/figs/pe.json5)
+<!-- ![](figs/image-9.png) -->
 
 **Halo Adder**：在计算部分和的时候，经常会出现一个 `row` 的值被拆成两部分的情况。我们可以将上一个周期的最后段部分和储存下来，delay 一个周期后加到下一个周期部分和的第一段上。
 * 稀疏矩阵是 NxN 的，稀疏矩阵的一行最多被拆成两段，而不会是三段。Halo Adder 里只需要保存一个元素。
@@ -184,7 +185,8 @@ module SpMM(
 ]}
 -->
 
-![](figs/image-10.png)
+![](https://svg.wavedrom.com/github/pku-liang/hlcd-spmm-project/main/figs/pe-array.json5)
+<!-- ![](figs/image-10.png) -->
 
 阵列除了支持通常的 SpMM 外，还需要支持 Weight Stationary 和 Output Stationary
 
