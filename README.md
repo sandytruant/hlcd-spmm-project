@@ -186,7 +186,7 @@ module SpMM(
 ]}
 -->
 
-![](https://svg.wavedrom.com/github/pku-liang/hlcd-spmm-project/main/figs/pe-array.json5)
+![](https://svg.wavedrom.com/github/pku-liang/hlcd-spmm-project/main/figs/pe-array2.json5)
 * 图片看不清可以点击图片查看
 
 
