@@ -515,10 +515,13 @@ struct WSPipe: public Test {
         }
         std::vector<int> out[2][2];
         dut->send_rhs(rhs[0]);
+        dut->step();
         dut->send_rhs(rhs[1]);
+        dut->step();
         for(int j = 0; j < 2; j++) {
             for(int i = 0; i < 2; i++) {
                 dut->send_lhs(lhs[i]);
+                dut->step();
             }
             for(int i = 0; i < 2; i++) {
                 dut->receive_out(out[i][j]);
