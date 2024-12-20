@@ -231,7 +231,7 @@ public:
         }
         if(!comb) {
             send_rhs_tick++;
-            if(send_rhs_tick + 1 == n / 4) {
+            if(send_rhs_tick == n / 4) {
                 send_rhs_tick = -1;
             }
         }
