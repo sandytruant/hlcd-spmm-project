@@ -202,7 +202,7 @@ module SpMM(
 <details>
 <summary>Weight Stationary 的时序图</summary>
 
-![](https://svg.wavedrom.com/github/pku-liang/hlcd-spmm-project/main/figs/pe-array-ws2.json5)
+![](https://svg.wavedrom.com/github/pku-liang/hlcd-spmm-project/main/figs/pe-array-ws3.json5)
 
 </details>
 
