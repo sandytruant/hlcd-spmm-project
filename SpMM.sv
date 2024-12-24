@@ -18,6 +18,17 @@ module add_(
     end
 endmodule
 
+module sub_(
+    input   logic   clock,
+    input   data_t  a,
+    input   data_t  b,
+    output  data_t  out
+);
+    always_ff @(posedge clock) begin
+        out.data <= a.data - b.data;
+    end
+endmodule
+
 module mul_(
     input   logic   clock,
     input   data_t  a,
@@ -42,13 +53,120 @@ module RedUnit(
     // num_el 总是赋值为 N
     assign num_el = `N;
     // delay 你需要自己为其赋值，表示电路的延迟
-    assign delay = 0;
+    assign delay = `lgN + 1;
+
+    data_t add_a[`lgN-1:0][`N-1:0];
+    data_t add_b[`lgN-1:0][`N-1:0];
+    data_t add_out[`lgN-1:0][`N-1:0];
+
+    data_t sub_a[`N-1:0];
+    data_t sub_b[`N-1:0];
+    data_t sub_out[`N-1:0];
+
+    assign out_data = sub_out;
+
+    logic pipeline_split[`lgN-1:0][`N-1:0];
+    logic [`lgN-1:0] pipeline_out_idx[`lgN-1:0][`N-1:0];
+
+    always_ff @( posedge clock ) begin
+        for (int i = 0; i < `lgN; i++) begin
+            for (int j = 0; j < `N; j++) begin
+                if (i == 0) begin
+                    pipeline_split[i][j] <= split[j];
+                    pipeline_out_idx[i][j] <= out_idx[j];
+                end
+                else begin
+                    pipeline_split[i][j] <= pipeline_split[i-1][j];
+                    pipeline_out_idx[i][j] <= pipeline_out_idx[i-1][j];
+                end
+            end
+        end
+    end
 
     generate
-        for(genvar i = 0; i < `N; i++) begin
-            assign out_data[i] = 0;
+        for (genvar i = 0; i < `lgN; i++) begin
+            for (genvar j = 0; j < `N; j++) begin
+                add_ add_(
+                    .clock(clock),
+                    .a(add_a[i][j]),
+                    .b(add_b[i][j]),
+                    .out(add_out[i][j])
+                );
+            end
         end
     endgenerate
+
+    generate
+        for (genvar j = 0; j < `N; j++) begin
+            sub_ sub_(
+                .clock(clock),
+                .a(sub_a[j]),
+                .b(sub_b[j]),
+                .out(sub_out[j])
+            );
+        end
+    endgenerate
+
+    always_comb begin
+        for (int i = 0; i < `lgN; i++) begin
+            for (int j = 0; j < `N; j++) begin
+                if (i == 0) begin
+                    assign add_a[i][j] = data[j];
+                    assign add_b[i][j] = j > 0 ? data[j-1] : 0;
+                end
+                else begin
+                    assign add_a[i][j] = add_out[i-1][j];
+                    assign add_b[i][j] = j > i ? add_out[i-1][j-i-1] : 0;
+                end
+            end
+        end
+    end
+
+    logic first_one[`N-1:0];
+    logic found;
+    logic [`lgN-1:0] last_valid_out_idx[`N-1:0];
+
+    // Calculate the last valid out_index of pipeline_out_idx[`lgN-1][j]
+    always_comb begin
+        assign found = 0;
+        for (int i = 0; i < `N; i++) begin
+            first_one[i] = 0;
+            last_valid_out_idx[i] = 0;
+        end
+        for (int j = 0; j < `N; j++) begin
+            if (pipeline_split[`lgN-1][pipeline_out_idx[`lgN-1][j]] == 1) begin
+                if (found == 0) begin
+                    first_one[j] = 1;
+                    found = 1;
+                end
+                if (j < `N-1) begin
+                    last_valid_out_idx[j+1] = pipeline_out_idx[`lgN-1][j];
+                end
+            end
+            else begin
+                if (j < `N-1) begin
+                    last_valid_out_idx[j+1] = last_valid_out_idx[j];
+                end
+            end
+        end
+    end
+
+    always_comb begin
+        for (int j = 0; j < `N; j++) begin
+            assign sub_a[j] = 0;
+            assign sub_b[j] = 0;
+            if (pipeline_split[`lgN-1][pipeline_out_idx[`lgN-1][j]] == 1) begin
+                assign sub_a[j] = add_out[`lgN-1][pipeline_out_idx[`lgN-1][j]];
+                if (first_one[j] == 1) begin
+                    assign sub_b[j] = 0;
+                end
+                else begin
+                    assign sub_b[j] = add_out[`lgN-1][last_valid_out_idx[j]];
+                end
+            end
+        end
+    end
+            
 endmodule
 
 module PE(
