@@ -116,7 +116,7 @@ module RedUnit(
                 end
                 else begin
                     assign add_a[i][j] = add_out[i-1][j];
-                    assign add_b[i][j] = j > i ? add_out[i-1][j-i-1] : 0;
+                    assign add_b[i][j] = j >= (1<<i) ? add_out[i-1][j-(1<<i)] : 0;
                 end
             end
         end
@@ -124,28 +124,28 @@ module RedUnit(
 
     logic first_one[`N-1:0];
     logic found;
-    logic [`lgN-1:0] last_valid_out_idx[`N-1:0];
+    logic [`lgN-1:0] last_split[`N-1:0];
 
-    // Calculate the last valid out_index of pipeline_out_idx[`lgN-1][j]
+    // Calculate the last split of j
     always_comb begin
         assign found = 0;
         for (int i = 0; i < `N; i++) begin
             first_one[i] = 0;
-            last_valid_out_idx[i] = 0;
+            last_split[i] = 0;
         end
         for (int j = 0; j < `N; j++) begin
-            if (pipeline_split[`lgN-1][pipeline_out_idx[`lgN-1][j]] == 1) begin
+            if (pipeline_split[`lgN-1][j] == 1) begin
                 if (found == 0) begin
                     first_one[j] = 1;
                     found = 1;
                 end
                 if (j < `N-1) begin
-                    last_valid_out_idx[j+1] = pipeline_out_idx[`lgN-1][j];
+                    last_split[j+1] = j;
                 end
             end
             else begin
                 if (j < `N-1) begin
-                    last_valid_out_idx[j+1] = last_valid_out_idx[j];
+                    last_split[j+1] = last_split[j];
                 end
             end
         end
@@ -157,11 +157,11 @@ module RedUnit(
             assign sub_b[j] = 0;
             if (pipeline_split[`lgN-1][pipeline_out_idx[`lgN-1][j]] == 1) begin
                 assign sub_a[j] = add_out[`lgN-1][pipeline_out_idx[`lgN-1][j]];
-                if (first_one[j] == 1) begin
+                if (first_one[pipeline_out_idx[`lgN-1][j]] == 1) begin
                     assign sub_b[j] = 0;
                 end
                 else begin
-                    assign sub_b[j] = add_out[`lgN-1][last_valid_out_idx[j]];
+                    assign sub_b[j] = add_out[`lgN-1][last_split[pipeline_out_idx[`lgN-1][j]]];
                 end
             end
         end

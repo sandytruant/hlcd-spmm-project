@@ -243,8 +243,8 @@ int main(int argc, char ** argv) {
         return res;
     };
     test_it("trace/RedUnit/01-single.vcd", make_data(Data::init_single));
-    // test_it("trace/RedUnit/02-full.vcd", make_data(Data::init_full));
-    // test_it("trace/RedUnit/03-random.vcd", make_data(Data::init_random));
-    // test_it("trace/RedUnit/04-shuffle.vcd", make_data(Data::init_shuffle));
+    test_it("trace/RedUnit/02-full.vcd", make_data(Data::init_full));
+    test_it("trace/RedUnit/03-random.vcd", make_data(Data::init_random));
+    test_it("trace/RedUnit/04-shuffle.vcd", make_data(Data::init_shuffle));
     return 0;
 }
