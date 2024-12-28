@@ -18,7 +18,7 @@ $(1): obj_dir/$(1)/V$(1)
 obj_dir/$(1)/V$(1): SpMM.sv $(1).tb.cpp
 	@mkdir -p obj_dir/$(1)
 	verilator --cc --trace --exe -Wno-fatal -Mdir obj_dir/$(1) -DN=$(N) --top $(1) $$^
-	$(MAKE) -j -C obj_dir/$(1) -f V$(1).mk
+	make -j -C obj_dir/$(1) -f V$(1).mk
 endef
 $(eval $(call gen_verilator_target_mk,RedUnit))
 $(eval $(call gen_verilator_target_mk,PE))

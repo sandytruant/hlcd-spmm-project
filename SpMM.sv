@@ -46,7 +46,9 @@ module RedUnit(
     input   data_t              data[`N-1:0],
     input   logic               split[`N-1:0],
     input   logic [`lgN-1:0]    out_idx[`N-1:0],
+    input   logic               valid[`N-1:0],
     output  data_t              out_data[`N-1:0],
+    output  logic               out_valid[`N-1:0],
     output  int                 delay,
     output  int                 num_el
 );
@@ -63,7 +65,10 @@ module RedUnit(
     data_t sub_b[`N-1:0];
     data_t sub_out[`N-1:0];
 
+    logic pipeline_valid[`lgN:0][`N-1:0];
+
     assign out_data = sub_out;
+    assign out_valid = pipeline_valid[`lgN];
 
     logic pipeline_split[`lgN-1:0][`N-1:0];
     logic [`lgN-1:0] pipeline_out_idx[`lgN-1:0][`N-1:0];
@@ -78,6 +83,19 @@ module RedUnit(
                 else begin
                     pipeline_split[i][j] <= pipeline_split[i-1][j];
                     pipeline_out_idx[i][j] <= pipeline_out_idx[i-1][j];
+                end
+            end
+        end
+    end
+
+    always_ff @(posedge clock) begin
+        for (int i = 0; i <= `lgN; i++) begin
+            for (int j = 0; j < `N; j++) begin
+                if (i == 0) begin
+                    pipeline_valid[i][j] <= valid[j];
+                end
+                else begin
+                    pipeline_valid[i][j] <= pipeline_valid[i-1][j];
                 end
             end
         end
@@ -140,7 +158,7 @@ module RedUnit(
                     found = 1;
                 end
                 if (j < `N-1) begin
-                    last_split[j+1] = j;
+                    last_split[j+1] = `lgN'(j);
                 end
             end
             else begin
@@ -184,13 +202,88 @@ module PE(
     // num_el 总是赋值为 N
     assign num_el = `N;
     // delay 你需要自己为其赋值，表示电路的延迟
-    assign delay = 0;
+    assign delay = `lgN + 2;
+
+    logic [`lgN:0] counter;
+    logic [`dbLgN-1:0] ptr[`N-1:0];
+    data_t mul_in1[`N-1:0];
+    data_t mul_in2[`N-1:0];
+    data_t mul_out[`N-1:0];
+
+    logic red_split[`N-1:0];
+    logic [`lgN-1:0] red_out_idx[`N-1:0];
+    data_t red_out_data[`N-1:0];
+
+    logic red_valid[`N-1:0];
+    logic red_out_valid[`N-1:0];
+
+    always_comb begin
+        mul_in1 = lhs_data;
+        for (int i = 0; i < `N; i++) begin
+            mul_in2[i] = rhs[lhs_col[i]];
+            out[i] = red_out_valid[i] ? red_out_data[i] : 0;
+        end
+    end
+
+    always_ff @( posedge clock ) begin
+        if (lhs_start) begin
+            counter <= 1;
+            ptr <= lhs_ptr;
+        end
+        if (counter > 0) begin
+            counter <= counter + 1;
+        end  
+    end
+
+    always_ff @( posedge clock ) begin
+        for (int i = 0; i < `N; i++) begin
+            red_split[i] <= 0;
+            red_out_idx[i] <= 0;
+            red_valid[i] <= 0;
+        end
+        if (lhs_start) begin
+            for (int i = 0; i < `N; i++) begin
+                if (lhs_ptr[i] < `N && (i == 0 || (i > 0 && lhs_ptr[i] != lhs_ptr[i-1]))) begin
+                    red_split[lhs_ptr[i]] <= 1;
+                    red_out_idx[i] <= lhs_ptr[i];
+                    red_valid[i] <= 1;
+                end
+            end
+        end
+        else if (counter > 0) begin
+            for (int i = 0; i < `N; i++) begin
+                if (ptr[i] >= counter * `N && ptr[i] < (counter + 1) * `N && (i == 0 || (i > 0 && ptr[i] != ptr[i-1]))) begin
+                    red_split[ptr[i]-counter*`N] <= 1;
+                    red_out_idx[i] <= ptr[i]-counter*`N;
+                    red_valid[i] <= 1;
+                end
+            end
+        end
+    end
 
     generate
-        for(genvar i = 0; i < `N; i++) begin
-            assign out[i] = 0;
+        for (genvar i = 0; i < `N; i++) begin
+            mul_ mul_(
+                .clock(clock),
+                .a(mul_in1[i]),
+                .b(mul_in2[i]),
+                .out(mul_out[i])
+            );
         end
     endgenerate
+
+    RedUnit red_unit(
+        .clock(clock),
+        .reset(reset),
+        .data(mul_out),
+        .split(red_split),
+        .out_idx(red_out_idx),
+        .valid(red_valid),
+        .out_data(red_out_data),
+        .out_valid(red_out_valid),
+        .delay(),
+        .num_el()
+    );
 endmodule
 
 module SpMM(
