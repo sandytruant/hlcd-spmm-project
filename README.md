@@ -11,34 +11,41 @@
 
 * 60 分的 基础版本在第一次已经评测，期末补交扣 10 分
 * 20 分的 PfxSum/Fan 由助教看代码或面测时提问
-* 20 分的 halo, dbbuf, ws, os 用下面的代码评测：
+* 20 分的 halo, dbbuf, ws, os 用下面的代码评测
 
-final version 的测试 tb 文件已经上传，可以运行下面的代码测试：
+final version 的部分测试 tb 文件已经上传，可以运行下面的代码测试：
 
 ```shell
-make l2 >/dev/null
+make -j`nproc` l2 >/dev/null
 ```
 
 如果全部正确，测试结果如下：
 
 ```raw
-BEST ROUTE:
-  halo                  success-rate=1.0000 cum_prod=1.0000 part_sum=1.0000
-  halo  dbbuf           success-rate=1.0000 cum_prod=1.0000 part_sum=2.0000
-  halo  dbbuf  ws       success-rate=1.0000 cum_prod=1.0000 part_sum=3.0000
-  halo  dbbuf  ws  os   success-rate=1.0000 cum_prod=1.0000 part_sum=4.0000
+COMPONENT SUCCESS RATE:
+  halo                  = 1.0000
+        dbbuf           = 1.0000
+               ws       = 1.0000
+                   os   = 1.0000
+COMPLEXITY BEST ROUTE:
+  halo                  success-rate=1.0000 cum-prod=1.0000 part-sum=1.0000
+  halo  dbbuf           success-rate=1.0000 cum-prod=1.0000 part-sum=2.0000
+  halo  dbbuf  ws       success-rate=1.0000 cum-prod=1.0000 part-sum=3.0000
+  halo  dbbuf  ws  os   success-rate=1.0000 cum-prod=1.0000 part-sum=4.0000
 
-EXPECTED VAL: 4.0000
-WEIGHT       *     5 
-FINAL SCORE : 20.0000
+COMPLEXITY SCORE:  4.0000  /  4
+COMPONENT SCORE :  4.0000  /  4
+FINAL SCORE     : 20.0000  / 20
 ```
 
-* 评分程序通过动态规划，求出一个 halo, dbbuf, ws, os 的实现顺序，计算这个顺序可以得到的最高分数
+* component score 实现了每个功能就有分
+* complexity score 求出一个 halo, dbbuf, ws, os 的实现顺序，按照这个顺序将正确率的前缀积累加
+* final score 是上面两个分数的平均值
 
 如果你没有做出 60 分的版本，想要在期末重新写，可以用下面的脚本确认：
 
 ```shell
-make l1 > /dev/null
+make -j`nproc` l1 > /dev/null
 ```
 
 如果全部正确，结果如下：
@@ -353,7 +360,7 @@ trace
 
 |       | tree | pfxsum | fan | halo | dbbuf | wei-sta | out-sta |
 | ----- | ---- | ------ | --- | ---- | ----- | ------- | ------- |
-| N=16  | 0    | 8      | 14  | 4    | 4     | 4       | 4       |
+| N=16  | 0    | 8      | 16  | 4    | 4     | 4       | 4       |
 | N=any | 2    | 12     | 20  | 5    | 5     | 5       | 5       |
 
 * tree, pfxsum, fan：Reduction Unit 的实现方法（三选一）
