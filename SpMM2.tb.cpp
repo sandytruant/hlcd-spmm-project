@@ -1,4 +1,5 @@
 #include "VSpMM.h"
+#include "score.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 #include <fstream>
@@ -6,7 +7,10 @@
 #include <iostream>
 #include <memory>
 #include <numeric>
+#include <sstream>
 #include <stdexcept>
+
+// #define CHISEL
 
 namespace {
 
@@ -131,7 +135,7 @@ public:
         return ctx;
     }
     DUT(): VSpMM(new_context()) {}
-    ~DUT() {
+    ~DUT() override {
         if(tfp) tfp->close();
         delete tfp;
     }
@@ -142,12 +146,14 @@ public:
     }
     int n = -1;
     int timeout = -1;
-    int random_sleep = 0;
-    // uint8_t * lhs_ptr = (uint8_t*)&lhs_ptr_0;
-    // uint8_t * lhs_col = (uint8_t*)&lhs_col_0;
-    // uint8_t * lhs_data = (uint8_t*)&lhs_data_0;
-    // uint8_t * rhs_data = (uint8_t*)&rhs_data_0_0;
-    // uint8_t * out_data = (uint8_t*)&out_data_0_0;
+    int random_sleep = 5;
+#ifdef CHISEL
+    uint8_t * lhs_ptr = (uint8_t*)&lhs_ptr_0;
+    uint8_t * lhs_col = (uint8_t*)&lhs_col_0;
+    uint8_t * lhs_data = (uint8_t*)&lhs_data_0;
+    uint8_t * rhs_data_ = (uint8_t*)&rhs_data_0_0;
+    uint8_t * out_data_ = (uint8_t*)&out_data_0_0;
+#endif
     void init() {
         this->reset = 1;
         this->step(1);
@@ -226,6 +232,10 @@ public:
     std::vector<int> cur_rhs;
     int send_rhs_tick = -1;
     void tick_rhs(bool comb=false) {
+#ifdef CHISEL
+        uint8_t (*rhs_data)[n];
+        *(uint8_t**)(&rhs_data) = rhs_data_;
+#endif
         rhs_start = send_rhs_tick == 0;
         if(send_rhs_tick == -1) return;
         for(int i = 0; i < 4 * n; i++) {
@@ -249,6 +259,10 @@ public:
         this->eval();
     }
     void receive_out(std::vector<int> & out) {
+#ifdef CHISEL
+        uint8_t (*out_data)[n];
+        *(uint8_t**)(&out_data) = out_data_;
+#endif
         out.resize(n * n);
         int sleep = rand() % random_sleep;
         while(sleep--) step();
@@ -284,6 +298,8 @@ static void generate_gtkw_file(const char * out, int num_el) {
     fout.close();
 }
 
+using gen_lhs_func = std::function<LHS(bool, bool)>;
+
 struct Test {
     int n;
     std::unique_ptr<DUT> dut;
@@ -291,6 +307,8 @@ struct Test {
     virtual ~Test() = default;
     virtual std::string name() = 0;
     virtual bool run() = 0;
+    virtual int gen_num_lhs_gen() = 0;
+    virtual gen_lhs_func* get_lhs_gen() = 0;
     bool verify(std::vector<LHS> lhs, std::vector<std::vector<int>> rhs, std::vector<int> res) {
         std::vector<int> gold(n * n);
         for(int i = 0; i < n; i++) {
@@ -369,14 +387,45 @@ struct Test {
     }
 };
 
+
+static std::vector<gen_lhs_func> lhs_no_halo(int num_el) {
+    return {
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_full, num_el);},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_half, num_el);},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_eye, num_el);},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_empty, num_el);},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_linesep, num_el);},
+    };
+}
+
+static std::vector<gen_lhs_func> lhs_halo(int num_el) {
+    int Q0 = 0, Q1 = num_el / 4, Q2 = num_el / 2, Q3 = num_el * 3 / 4, Q4 = num_el;
+    return {
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q0, Q1});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q1, Q2});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q2, Q3});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q3, Q4});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q0, Q2});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q1, Q3});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q2, Q4});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q0, Q4});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q0, Q4});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q0, Q4});},
+        [=](bool ws, bool os){return LHS::new_with(ws, os, &LHS::init_rand, num_el, Range{Q0, Q4});},
+    };
+}
+
 struct NsOnepass: public Test {
     using Test::Test;
+    gen_lhs_func gen[1];
+    int gen_num_lhs_gen() override {return 1;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "ns-onepass";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs = LHS::new_with(false, false, &LHS::init_full, dut->n);
+        LHS lhs = gen[0](false, false);
         auto rhs = gen_rhs(dut->n, {1, 2});
         dut->send_rhs(rhs); dut->step();
         dut->send_lhs(lhs); dut->step();
@@ -388,12 +437,15 @@ struct NsOnepass: public Test {
 
 struct RhsDbBuf: public Test {
     using Test::Test;
+    gen_lhs_func gen[1];
+    int gen_num_lhs_gen() override {return 1;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "rhs-dbbuf";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs = LHS::new_with(false, false, &LHS::init_full, dut->n);
+        LHS lhs = gen[0](false, false);
         auto rhs1 = gen_rhs(dut->n, {1, 2});
         auto rhs2 = gen_rhs(dut->n, {2, 3});
         dut->send_rhs(rhs1); dut->step();
@@ -410,12 +462,15 @@ struct RhsDbBuf: public Test {
 
 struct OutDbBuf: public Test {
     using Test::Test;
+    gen_lhs_func gen[1];
+    int gen_num_lhs_gen() override {return 1;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "out-dbbuf";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs = LHS::new_with(false, false, &LHS::init_full, dut->n);
+        LHS lhs = gen[0](false, false);
         auto rhs1 = gen_rhs(dut->n, {1, 2});
         auto rhs2 = gen_rhs(dut->n, {2, 3});
         dut->send_rhs(rhs1); dut->step();
@@ -432,13 +487,16 @@ struct OutDbBuf: public Test {
 
 struct RhsOutDbBuf: public Test {
     using Test::Test;
+    gen_lhs_func gen[2];
+    int gen_num_lhs_gen() override {return 2;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "rhs-out-dbbuf";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs1 = LHS::new_with(false, false, &LHS::init_full, dut->n);
-        LHS lhs2 = LHS::new_with(false, false, &LHS::init_half, dut->n);
+        LHS lhs1 = gen[0](false, false);
+        LHS lhs2 = gen[1](false, false);
         auto rhs1 = gen_rhs(dut->n, {1, 2});
         auto rhs2 = gen_rhs(dut->n, {2, 3});
         dut->send_rhs(rhs1); dut->step();
@@ -455,13 +513,16 @@ struct RhsOutDbBuf: public Test {
 
 struct WSOnePass: public Test {
     using Test::Test;
+    gen_lhs_func gen[2];
+    int gen_num_lhs_gen() override {return 2;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "ws-one-pass";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs1 = LHS::new_with(true, false, &LHS::init_full, dut->n);
-        LHS lhs2 = LHS::new_with(true, false, &LHS::init_half, dut->n);
+        LHS lhs1 = gen[0](true, false);
+        LHS lhs2 = gen[1](true, false);
         auto rhs = gen_rhs(dut->n, {1, 2});
         std::vector<int> out1;
         std::vector<int> out2;
@@ -476,13 +537,16 @@ struct WSOnePass: public Test {
 
 struct WSOutDbBuf: public Test {
     using Test::Test;
+    gen_lhs_func gen[2];
+    int gen_num_lhs_gen() override {return 2;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "ws-out-dbbuf";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs1 = LHS::new_with(true, false, &LHS::init_full, dut->n);
-        LHS lhs2 = LHS::new_with(true, false, &LHS::init_half, dut->n);
+        LHS lhs1 = gen[0](true, false);
+        LHS lhs2 = gen[1](true, false);
         auto rhs = gen_rhs(dut->n, {1, 2});
         std::vector<int> out1;
         std::vector<int> out2;
@@ -497,6 +561,9 @@ struct WSOutDbBuf: public Test {
 
 struct WSPipe: public Test {
     using Test::Test;
+    gen_lhs_func gen[2];
+    int gen_num_lhs_gen() override {return 2;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "ws-pipe";
     }
@@ -504,7 +571,7 @@ struct WSPipe: public Test {
         dut->timeout = n * 1000;
         LHS lhs[2];
         for(int i = 0; i < 2; i++) {
-            lhs[i] = LHS::new_with(i + 1 < 2, false, &LHS::init_full, dut->n);
+            lhs[i] = gen[i](i + 1 < 2, false);
         }
         std::vector<int> rhs[2];
         for(int i = 0; i < 2; i++) {
@@ -536,13 +603,16 @@ struct WSPipe: public Test {
 
 struct OSOnePass : public Test {
     using Test::Test;
+    gen_lhs_func gen[2];
+    int gen_num_lhs_gen() override {return 2;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "os-onepass";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs1 = LHS::new_with(false, false, &LHS::init_full, dut->n);
-        LHS lhs2 = LHS::new_with(false, true, &LHS::init_half, dut->n);
+        LHS lhs1 = gen[0](false, false);
+        LHS lhs2 = gen[1](false, true);
         auto rhs1 = gen_rhs(dut->n, {1, 2});
         auto rhs2 = gen_rhs(dut->n, {1, 2});
         std::vector<int> out;
@@ -557,13 +627,16 @@ struct OSOnePass : public Test {
 
 struct OSRhsDbBuf: public Test {
     using Test::Test;
+    gen_lhs_func gen[2];
+    int gen_num_lhs_gen() override {return 2;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "os-rhs-dbbuf";
     }
     bool run() override {
         dut->timeout = n * 1000;
-        LHS lhs1 = LHS::new_with(false, false, &LHS::init_full, dut->n);
-        LHS lhs2 = LHS::new_with(false, true, &LHS::init_half, dut->n);
+        LHS lhs1 = gen[0](false, false);
+        LHS lhs2 = gen[1](false, true);
         auto rhs1 = gen_rhs(dut->n, {1, 2});
         auto rhs2 = gen_rhs(dut->n, {1, 2});
         std::vector<int> out;
@@ -578,6 +651,9 @@ struct OSRhsDbBuf: public Test {
 
 struct OSPipe: public Test {
     using Test::Test;
+    gen_lhs_func gen[4];
+    int gen_num_lhs_gen() override {return 4;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "os-pipe";
     }
@@ -588,7 +664,7 @@ struct OSPipe: public Test {
         std::vector<int> out[2][2];
         for(int i = 0; i < 2; i++) {
             for(int j = 0; j < 2; j++) {
-                lhs[i][j] = LHS::new_with(false, j != 0, &LHS::init_full, dut->n);
+                lhs[i][j] = gen[i*2+j](false, j != 0);
             }
         }
         for(int i = 0; i < 2; i++) {
@@ -612,21 +688,24 @@ struct OSPipe: public Test {
                 ok &= verify({lhs[i][0], lhs[i][1]}, {rhs[0][j], rhs[1][j]}, out[i][j]);
             }
         }
-        return true;
+        return ok;
     }
 };
 
 struct WOSOnePass: public Test {
     using Test::Test;
+    gen_lhs_func gen[4];
+    int gen_num_lhs_gen() override {return 4;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
     std::string name() override {
         return "wos-pipe";
     }
     bool run() override {
         dut->timeout = n * 4 * 1000;
-        LHS lhs1 = LHS::new_with(true, false, &LHS::init_full, dut->n);
-        LHS lhs2 = LHS::new_with(true, true, &LHS::init_full, dut->n);
-        LHS lhs3 = LHS::new_with(true, true, &LHS::init_full, dut->n);
-        LHS lhs4 = LHS::new_with(true, true, &LHS::init_full, dut->n);
+        LHS lhs1 = gen[0](true, false);
+        LHS lhs2 = gen[1](true, true);
+        LHS lhs3 = gen[2](true, true);
+        LHS lhs4 = gen[3](true, true);
         std::vector<int> rhs = gen_rhs(n, {1, 2});
         dut->send_rhs(rhs);
         dut->send_lhs(lhs1);
@@ -643,35 +722,99 @@ struct WOSOnePass: public Test {
     }
 };
 
+using test_gen_func = std::function<Test*()>;
+
+struct TestInfo {
+    test_gen_func gen;
+    bool dbbuf, ws, os;
+};
+
+static const std::vector<TestInfo> testInfo {
+    {[](){return new NsOnepass;}, 
+        false, false, false},
+    {[](){return new RhsDbBuf;}, 
+        true, false, false},
+    {[](){return new OutDbBuf;}, 
+        true, false, false},
+    {[](){return new RhsOutDbBuf;}, 
+        true, false, false},
+    {[](){return new WSOnePass;}, 
+        false, true, false},
+    {[](){return new WSOutDbBuf;}, 
+        true, true, false},
+    {[](){return new WSPipe;}, 
+        true, true, false},
+    {[](){return new OSOnePass;}, 
+        false, false, true},
+    {[](){return new OSPipe;}, 
+        true, false, true},
+    {[](){return new WOSOnePass;}, 
+        false, true, true},
+};
+
+struct MetaTest {
+    std::unique_ptr<Test> test;
+    bool dbbuf, ws, os, halo;
+    std::string name() {
+        std::stringstream ss;
+        ss << "test";
+        if(dbbuf) ss << "+dbbuf";
+        if(ws) ss << "+ws";
+        if(os) ss << "+os";
+        if(halo) ss << "+halo";
+        return ss.str();
+    }
+};
+
 } // namespace
 
-int main() {
+int main(int argc, char ** argv) {
     auto dut = std::make_unique<DUT>();
     dut->init();
     int num_el = dut->num_el;
     generate_gtkw_file("trace/SpMM/wave.gtkw", num_el);
-    std::vector<Test*> tests {
-        new NsOnepass(),
-        // new RhsDbBuf(),
-        // new OutDbBuf(),
-        // new RhsOutDbBuf(),
-        // new WSOnePass(),
-        // new WSOutDbBuf(),
-        // new WSPipe(),
-        // new OSOnePass(),
-        // new OSPipe(),
-        // new WOSOnePass(),
+    std::vector<MetaTest> tests;
+    auto gen_no_halo = lhs_no_halo(num_el);
+    auto gen_halo = lhs_halo(num_el); 
+    auto choose_lhs_gen = [&](bool halo){
+        if(halo) return gen_halo[rand() % gen_halo.size()];
+        else return gen_no_halo[rand() % gen_no_halo.size()];
     };
+    for(auto info: testInfo) {
+        for(auto halo: {false, true}) {
+            for(int t = 0; t < 20; t++) {
+                auto test = info.gen();
+                auto cnt = test->gen_num_lhs_gen();
+                auto lhs_gen = test->get_lhs_gen();
+                for(int i = 0; i < cnt; i++) {
+                    lhs_gen[i] = choose_lhs_gen(halo);
+                }
+                tests.push_back((MetaTest) {
+                    .test=std::move(std::unique_ptr<Test>(test)),
+                    .dbbuf=info.dbbuf,
+                    .ws=info.ws,
+                    .os=info.os,
+                    .halo=halo
+                });
+            }
+        }
+    }
     int idx = 0;
-    int score = 0;
-    for(auto t: tests) {
+    double score = 0;
+    double total_score = 0;
+    for(auto & t: tests) {
         idx++;
         std::stringstream ss;
-        ss << "trace/SpMM/";
-        ss << std::setw(2) << std::setfill('0') << idx << "-" << t->name();
-        score += t->start((ss.str() + ".vcd").c_str());
+        ss << "trace/SpMM2/";
+        ss << std::setw(3) << std::setfill('0') << idx << "-" << t.name();
+        std::cout << ss.str() << std::endl;
+        bool success = t.test->start((ss.str() + ".vcd").c_str());
+        double cur_score = get_score(t.halo, t.dbbuf, t.ws, t.os);
+        total_score += cur_score;
+        if(success) {
+            score += cur_score;
+        }
     }
-    std::cerr << __FILE__ << " L1 SCORE: " << score << std::endl;
-    for(auto t: tests) delete t;
+    std::cerr << __FILE__ << " L2 SCORE: " << score << " / " << total_score << std::endl;
     return 0;
 }
