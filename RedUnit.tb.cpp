@@ -201,7 +201,7 @@ static void generate_gtkw_file(const char * out, int num_el) {
 static bool test_it(const char * vcd_file, const std::vector<Data> & data) {
     std::cout << "Generate " << vcd_file << std::endl;
     auto contextp = std::make_unique<VerilatedContext>();
-    contextp.threads(1);
+    contextp->threads(1);
     contextp->traceEverOn(true);
     auto dut = std::make_unique<DUT>(&*contextp);
     dut->init();

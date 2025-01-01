@@ -7,6 +7,38 @@
 **第一次评测时间：12月27日**
 **第二次评测时间：1月10日**
 
+## UPD: final version 测试
+
+* 60 分的 基础版本在第一次已经评测，期末补交扣 10 分
+* 20 分的 PfxSum/Fan 由助教看代码或面测时提问
+* 20 分的 halo, dbbuf, ws, os 用下面的代码评测：
+
+final version 的测试 tb 文件已经上传，可以运行下面的代码测试：
+
+```shell
+make l2 >/dev/null
+```
+
+如果全部正确，测试结果如下：
+
+```shell
+../../PE2.tb.cpp L2 SCORE: 0.260664 / 0.260664
+../../SpMM2.tb.cpp L2 SCORE: 19.7393 / 19.7393
+```
+
+如果你没有做出 60 分的版本，想要在期末重新写，可以用下面的脚本确认：
+
+```shell
+make l1 > /dev/null
+```
+
+如果全部正确，结果如下：
+
+```shell
+../../RedUnit.tb.cpp L1 SCORE: 1
+../../PE.tb.cpp L1 SCORE: 1
+```
+
 ## SpMM 介绍
 
 与稀疏矩阵相关的一些算子：

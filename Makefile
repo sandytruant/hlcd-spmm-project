@@ -1,7 +1,10 @@
 N ?= 4
 
 .phony: all clean clean-trace rdu
-all: RedUnit PE SpMM SpMM2
+all: RedUnit PE SpMM
+l1: RedUnit PE SpMM
+l2: PE2 SpMM2
+
 clean:
 	rm -rf obj_dir
 clean-trace:
@@ -10,7 +13,6 @@ clean-trace:
 # Alias rdu = RedUnit, type less chars
 rdu: RedUnit
 
-final: PE2 SpMM2
 
 define gen_verilator_target_mk
 .phony: $(1)
