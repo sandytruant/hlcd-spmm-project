@@ -287,28 +287,68 @@ static void generate_gtkw_file(const char * out, int num_el) {
     fout.close();
 }
 
+using  gen_data_func = std::function<Data()>;
+
+static std::vector<gen_data_func> gen_data_no_halo(int num_el) {
+    return {
+        [=](){return Data::new_with(&Data::init_full, num_el);},
+        [=](){return Data::new_with(&Data::init_half, num_el);},
+        [=](){return Data::new_with(&Data::init_eye, num_el);},
+        [=](){return Data::new_with(&Data::init_empty, num_el);},
+        [=](){return Data::new_with(&Data::init_linesep, num_el);},
+    };
+}
+
+static std::vector<gen_data_func> gen_data_halo(int num_el) {
+    int Q0 = 0, Q1 = num_el / 4, Q2 = num_el / 2, Q3 = num_el * 3 / 4, Q4 = num_el;
+    return {
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q0, Q1});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q1, Q2});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q2, Q3});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q3, Q4});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q0, Q2});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q1, Q3});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q2, Q4});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q0, Q4});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q0, Q4});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q0, Q4});},
+        [=](){return Data::new_with(&Data::init_rand, num_el, Range{Q0, Q4});},
+    };
+}
+
+#ifndef SCORE_PREFIX
+#define SCORE_PREFIX "score/"
+#endif
+
 int main() {
     auto dut = std::make_unique<DUT>();
     dut->init();
     int delay = dut->delay;
     int num_el = dut->num_el;
     std::cout << "delay=" << delay << " num_el=" << num_el << std::endl;
-    generate_gtkw_file("trace/PE/wave.gtkw", num_el);
-    int score = 0;
-    score += test_it("trace/PE/01-full.vcd", Data::new_with(&Data::init_full, num_el));
-    // test_it("trace/PE/02-half.vcd", Data::new_with(&Data::init_half, num_el));
-    // test_it("trace/PE/03-eye.vcd", Data::new_with(&Data::init_eye, num_el));
-    // test_it("trace/PE/04-empty.vcd", Data::new_with(&Data::init_empty, num_el));
-    // test_it("trace/PE/05-linesep.vcd", Data::new_with(&Data::init_linesep, num_el));
-    // int Q0 = 0, Q1 = num_el / 4, Q2 = num_el / 2, Q3 = num_el * 3 / 4, Q4 = num_el;
-    // test_it("trace/PE/06-rand-Q1.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q0, Q1}));
-    // test_it("trace/PE/07-rand-Q2.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q1, Q2}));
-    // test_it("trace/PE/08-rand-Q3.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q2, Q3}));
-    // test_it("trace/PE/09-rand-Q4.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q3, Q4}));
-    // test_it("trace/PE/10-rand-H1.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q0, Q2}));
-    // test_it("trace/PE/11-rand-H2.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q1, Q3}));
-    // test_it("trace/PE/12-rand-H3.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q2, Q4}));
-    // test_it("trace/PE/13-rand.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q0, Q4}));
-    std::cerr << __FILE__ << " L1 SCORE: " << score << std::endl;
+    generate_gtkw_file("trace/PE2/wave.gtkw", num_el);
+    auto no_halo = gen_data_no_halo(num_el);
+    auto halo = gen_data_halo(num_el);
+    int idx = 0;
+    std::ofstream out(SCORE_PREFIX "PE2.tb.out");
+    for(auto & t: no_halo) {
+        idx++;
+        std::stringstream ss;
+        ss << "trace/PE2/";
+        ss << std::setw(3) << std::setfill('0') << idx << "-test";
+        std::cout << ss.str() << std::endl;
+        bool success = test_it((ss.str()+".vcd").c_str(), t());
+        out << 0 << " " << (int)success << std::endl;
+    }
+    for(auto & t: halo) {
+        idx++;
+        std::stringstream ss;
+        ss << "trace/PE2/";
+        ss << std::setw(3) << std::setfill('0') << idx << "-test+halo";
+        std::cout << ss.str() << std::endl;
+        bool success = test_it((ss.str()+".vcd").c_str(), t());
+        out << 1 << " " << (int)success << std::endl;
+    }
+    out.close();
     return 0;
 }
