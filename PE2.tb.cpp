@@ -316,6 +316,10 @@ static std::vector<gen_data_func> gen_data_halo(int num_el) {
     };
 }
 
+#ifndef SCORE_PREFIX
+#define SCORE_PREFIX "score/"
+#endif
+
 int main() {
     auto dut = std::make_unique<DUT>();
     dut->init();
@@ -326,7 +330,7 @@ int main() {
     auto no_halo = gen_data_no_halo(num_el);
     auto halo = gen_data_halo(num_el);
     int idx = 0;
-    std::ofstream out("score/PE2.tb.out");
+    std::ofstream out(SCORE_PREFIX "PE2.tb.out");
     for(auto & t: no_halo) {
         idx++;
         std::stringstream ss;

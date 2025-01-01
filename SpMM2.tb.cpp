@@ -819,6 +819,10 @@ inline double get_score(bool halo, bool dbbuf, bool ws, bool os) {
 
 } // namespace
 
+#ifndef SCORE_PREFIX
+#define SCORE_PREFIX "score/"
+#endif
+
 int main(int argc, char ** argv) {
     auto dut = std::make_unique<DUT>();
     dut->init();
@@ -851,7 +855,7 @@ int main(int argc, char ** argv) {
         }
     }
     int idx = 0;
-    std::ofstream out("score/SpMM2.tb.out");
+    std::ofstream out(SCORE_PREFIX "SpMM2.tb.out");
     for(auto & t: tests) {
         idx++;
         std::stringstream ss;
