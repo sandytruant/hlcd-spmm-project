@@ -1,5 +1,4 @@
 #include "VPE.h"
-#include "score.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 #include <cmath>
@@ -327,15 +326,15 @@ int main() {
     auto no_halo = gen_data_no_halo(num_el);
     auto halo = gen_data_halo(num_el);
     int idx = 0;
-    double score = 0;
-    double total_score = 0;
+    std::ofstream out("score/PE2.tb.out");
     for(auto & t: no_halo) {
         idx++;
         std::stringstream ss;
         ss << "trace/PE2/";
         ss << std::setw(3) << std::setfill('0') << idx << "-test";
         std::cout << ss.str() << std::endl;
-        test_it((ss.str()+".vcd").c_str(), t());
+        bool success = test_it((ss.str()+".vcd").c_str(), t());
+        out << 0 << " " << (int)success << std::endl;
     }
     for(auto & t: halo) {
         idx++;
@@ -344,12 +343,8 @@ int main() {
         ss << std::setw(3) << std::setfill('0') << idx << "-test+halo";
         std::cout << ss.str() << std::endl;
         bool success = test_it((ss.str()+".vcd").c_str(), t());
-        double cur_score = get_score(true, false, false, false);
-        total_score += cur_score;
-        if(success) {
-            score += cur_score;
-        }
+        out << 1 << " " << (int)success << std::endl;
     }
-    std::cerr << __FILE__ << " L2 SCORE: " << score << " / " << total_score << std::endl;
+    out.close();
     return 0;
 }

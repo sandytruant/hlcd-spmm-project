@@ -21,9 +21,16 @@ make l2 >/dev/null
 
 如果全部正确，测试结果如下：
 
-```shell
-../../PE2.tb.cpp L2 SCORE: 0.260664 / 0.260664
-../../SpMM2.tb.cpp L2 SCORE: 19.7393 / 19.7393
+```raw
+BEST ROUTE:
+  halo                  success-rate=1.0000 cum_prod=1.0000 part_sum=1.0000
+  halo  dbbuf           success-rate=1.0000 cum_prod=1.0000 part_sum=2.0000
+  halo  dbbuf  ws       success-rate=1.0000 cum_prod=1.0000 part_sum=3.0000
+  halo  dbbuf  ws  os   success-rate=1.0000 cum_prod=1.0000 part_sum=4.0000
+
+EXPECTED VAL: 4.0000
+WEIGHT       *     5 
+FINAL SCORE : 20.0000
 ```
 
 如果你没有做出 60 分的版本，想要在期末重新写，可以用下面的脚本确认：
@@ -37,6 +44,7 @@ make l1 > /dev/null
 ```shell
 ../../RedUnit.tb.cpp L1 SCORE: 1
 ../../PE.tb.cpp L1 SCORE: 1
+../../SpMM.tb.cpp L1 SCORE: 1
 ```
 
 ## SpMM 介绍

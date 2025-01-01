@@ -1,5 +1,4 @@
 #include "VSpMM.h"
-#include "score.h"
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 #include <fstream>
@@ -722,6 +721,43 @@ struct WOSOnePass: public Test {
     }
 };
 
+struct WOSDbBuf: public Test {
+    using Test::Test;
+    gen_lhs_func gen[4];
+    int gen_num_lhs_gen() override {return 4;};
+    gen_lhs_func* get_lhs_gen() override {return gen;};
+    std::string name() override {
+        return "wos-pipe";
+    }
+    bool run() override {
+        dut->timeout = n * 4 * 1000;
+        LHS lhs1 = gen[0](true, false);
+        LHS lhs2 = gen[1](false, true);
+        LHS lhs3 = gen[2](true, false);
+        LHS lhs4 = gen[3](false, true);
+        std::vector<int> rhs1 = gen_rhs(n, {1, 2});
+        std::vector<int> rhs2 = gen_rhs(n, {1, 2});
+        dut->send_rhs(rhs1);
+        dut->step();
+        dut->send_rhs(rhs2);
+        dut->step();
+        dut->send_lhs(lhs1);
+        dut->step();
+        dut->send_lhs(lhs2);
+        dut->step();
+        std::vector<int> out1;
+        dut->receive_out(out1);
+        dut->step();
+        dut->send_lhs(lhs3);
+        dut->step();
+        dut->send_lhs(lhs4);
+        dut->step();
+        std::vector<int> out2;
+        dut->receive_out(out2);
+        return verify({lhs1, lhs2}, {rhs1, rhs1}, out1) && verify({lhs3, lhs4}, {rhs2, rhs2}, out2);
+    }
+};
+
 using test_gen_func = std::function<Test*()>;
 
 struct TestInfo {
@@ -750,6 +786,8 @@ static const std::vector<TestInfo> testInfo {
         true, false, true},
     {[](){return new WOSOnePass;}, 
         false, true, true},
+    {[](){return new WOSDbBuf;},
+        true, true, true}
 };
 
 struct MetaTest {
@@ -765,6 +803,19 @@ struct MetaTest {
         return ss.str();
     }
 };
+
+const double weight_halo  = 2.0 / 200;
+const double weight_dbbuf = 5.0 / 240;
+const double weight_ws    = 5.0 / 160;
+const double weight_os    = 5.0 / 120;
+inline double get_score(bool halo, bool dbbuf, bool ws, bool os) {
+    double res = 0;
+    if(halo) res += weight_halo;
+    if(dbbuf) res += weight_dbbuf;
+    if(ws) res += weight_ws;
+    if(os) res += weight_os;
+    return res;
+}
 
 } // namespace
 
@@ -800,8 +851,7 @@ int main(int argc, char ** argv) {
         }
     }
     int idx = 0;
-    double score = 0;
-    double total_score = 0;
+    std::ofstream out("score/SpMM2.tb.out");
     for(auto & t: tests) {
         idx++;
         std::stringstream ss;
@@ -809,12 +859,8 @@ int main(int argc, char ** argv) {
         ss << std::setw(3) << std::setfill('0') << idx << "-" << t.name();
         std::cout << ss.str() << std::endl;
         bool success = t.test->start((ss.str() + ".vcd").c_str());
-        double cur_score = get_score(t.halo, t.dbbuf, t.ws, t.os);
-        total_score += cur_score;
-        if(success) {
-            score += cur_score;
-        }
+        out << (t.halo * 1 + t.dbbuf * 2 + t.ws * 4 + t.os * 8) << " " << success << std::endl;
     }
-    std::cerr << __FILE__ << " L2 SCORE: " << score << " / " << total_score << std::endl;
+    out.close();
     return 0;
 }
