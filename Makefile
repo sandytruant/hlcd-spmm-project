@@ -31,7 +31,7 @@ $(1): $(OBJ)/$(1)/V$(2)
 $(OBJ)/$(1)/V$(2): $(TOP) $(1).tb.cpp
 	@mkdir -p $(OBJ)/$(1) $(SCORE_PREFIX)
 	verilator --cc --trace --exe -Wno-fatal -Mdir $(OBJ)/$(1) -DN=$(N) -CFLAGS "-DSCORE_PREFIX=\"\\\"$(SCORE_PREFIX)\\\"\"" --top $(2) $$^
-	$(MAKE) -C $(OBJ)/$(1) -f V$(2).mk
+	+$(MAKE) -C $(OBJ)/$(1) -f V$(2).mk
 endef
 $(eval $(call gen_verilator_target_mk,RedUnit,RedUnit))
 $(eval $(call gen_verilator_target_mk,PE2,PE))
