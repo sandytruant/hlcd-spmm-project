@@ -814,7 +814,7 @@ int main(int argc, char ** argv) {
     auto dut = std::make_unique<DUT>();
     dut->init();
     int num_el = dut->num_el;
-    generate_gtkw_file("trace/SpMM/wave.gtkw", num_el);
+    generate_gtkw_file("trace/SpMM2/wave.gtkw", num_el);
     std::vector<MetaTest> tests;
     auto gen_no_halo = lhs_no_halo(num_el);
     auto gen_halo = lhs_halo(num_el); 

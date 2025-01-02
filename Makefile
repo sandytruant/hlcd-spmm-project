@@ -30,7 +30,7 @@ $(1): $(OBJ)/$(1)/V$(2)
 	$$< | tee $(OUT)/$(1)/run.log
 $(OBJ)/$(1)/V$(2): $(TOP) $(1).tb.cpp
 	@mkdir -p $(OBJ)/$(1) $(SCORE_PREFIX)
-	verilator --cc --trace --exe -Wno-fatal -Mdir $(OBJ)/$(1) -DN=$(N) -CFLAGS "-DSCORE_PREFIX=\"\\\"$(SCORE_PREFIX)\\\"\"" --top $(2) $$^
+	verilator --cc --trace  --trace-max-array 1024 --trace-max-width 1024 --trace-depth 99 --exe -Wno-fatal -Mdir $(OBJ)/$(1) -DN=$(N) -CFLAGS "-DSCORE_PREFIX=\"\\\"$(SCORE_PREFIX)\\\"\"" --top $(2) $$^
 	+$(MAKE) -C $(OBJ)/$(1) -f V$(2).mk
 endef
 $(eval $(call gen_verilator_target_mk,RedUnit,RedUnit))
