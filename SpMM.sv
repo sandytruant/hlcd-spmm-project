@@ -47,8 +47,12 @@ module RedUnit(
     input   logic               split[`N-1:0],
     input   logic [`lgN-1:0]    out_idx[`N-1:0],
     input   logic               valid[`N-1:0],
+    input   logic [`lgN-1:0]    halo_idx_in,
+    input   logic               halo_valid_in,
     output  data_t              out_data[`N-1:0],
     output  logic               out_valid[`N-1:0],
+    output  logic [`lgN-1:0]    halo_idx_out,
+    output  logic               halo_valid_out,
     output  int                 delay,
     output  int                 num_el
 );
@@ -72,6 +76,23 @@ module RedUnit(
 
     logic pipeline_split[`lgN-1:0][`N-1:0];
     logic [`lgN-1:0] pipeline_out_idx[`lgN-1:0][`N-1:0];
+
+    logic [`lgN-1:0] pipeline_halo_idx[`lgN:0];
+    logic pipeline_halo_valid[`lgN:0];
+
+    always_ff @( posedge clock ) begin
+        for (int i = 0; i < `lgN; i++) begin
+            pipeline_halo_idx[i+1] <= pipeline_halo_idx[i];
+            pipeline_halo_valid[i+1] <= pipeline_halo_valid[i];
+        end
+        pipeline_halo_idx[0] <= halo_idx_in;
+        pipeline_halo_valid[0] <= halo_valid_in;
+    end
+
+    always_comb begin
+        halo_idx_out = pipeline_halo_idx[`lgN];
+        halo_valid_out = pipeline_halo_valid[`lgN];
+    end
 
     always_ff @( posedge clock ) begin
         for (int i = 0; i < `lgN; i++) begin
@@ -202,7 +223,7 @@ module PE(
     // num_el 总是赋值为 N
     assign num_el = `N;
     // delay 你需要自己为其赋值，表示电路的延迟
-    assign delay = `lgN + 2;
+    assign delay = `lgN + 3;
 
     logic [`lgN:0] counter;
     logic [`dbLgN-1:0] ptr[`N-1:0];
@@ -217,12 +238,37 @@ module PE(
     logic red_valid[`N-1:0];
     logic red_out_valid[`N-1:0];
 
+    logic [`lgN-1:0] halo_idx_in;
+    logic [`lgN-1:0] halo_idx_out;
+    logic halo_valid_in;
+    logic halo_valid_out;
+
+    logic [`lgN-1:0] halo_idx;
+    logic halo_valid;
+    data_t halo_data;
+
     always_comb begin
         mul_in1 = lhs_data;
         for (int i = 0; i < `N; i++) begin
             mul_in2[i] = rhs[lhs_col[i]];
-            out[i] = red_out_valid[i] ? red_out_data[i] : 0;
         end
+    end
+
+    always_ff @( posedge clock ) begin
+        for (int i = 0; i < `N; i++) begin
+            if (halo_valid == 1 && halo_idx == i) begin
+                out[i] <= red_out_valid[i] ? (red_out_data[i] + halo_data) : 0;
+            end
+            else begin
+                out[i] <= red_out_valid[i] ? red_out_data[i] : 0;
+            end
+        end
+    end
+
+    always_ff @( posedge clock ) begin
+        halo_idx <= halo_idx_out;
+        halo_valid <= halo_valid_out;
+        halo_data <= red_out_data[halo_idx_out];
     end
 
     always_ff @( posedge clock ) begin
@@ -248,6 +294,13 @@ module PE(
                     red_out_idx[i] <= lhs_ptr[i];
                     red_valid[i] <= 1;
                 end
+                else if (i > 0 && lhs_ptr[i-1] < `N - 1 && lhs_ptr[i] >= `N ) begin
+                    red_split[`N-1] <= 1;
+                    red_out_idx[i] <= `N - 1;
+                    red_valid[i] <= 1;
+                    halo_idx_in <= i;
+                    halo_valid_in <= 1;
+                end
             end
         end
         else if (counter > 0) begin
@@ -256,6 +309,13 @@ module PE(
                     red_split[ptr[i]-counter*`N] <= 1;
                     red_out_idx[i] <= ptr[i]-counter*`N;
                     red_valid[i] <= 1;
+                end
+                else if (i > 0 && ptr[i-1] < (counter + 1) * `N - 1 && ptr[i] >= (counter + 1) * `N ) begin
+                    red_split[`N-1] <= 1;
+                    red_out_idx[i] <= `N - 1;
+                    red_valid[i] <= 1;
+                    halo_idx_in <= i;
+                    halo_valid_in <= 1;
                 end
             end
         end
@@ -279,8 +339,12 @@ module PE(
         .split(red_split),
         .out_idx(red_out_idx),
         .valid(red_valid),
+        .halo_idx_in(halo_idx_in),
+        .halo_valid_in(halo_valid_in),
         .out_data(red_out_data),
         .out_valid(red_out_valid),
+        .halo_idx_out(halo_idx_out),
+        .halo_valid_out(halo_valid_out),
         .delay(),
         .num_el()
     );

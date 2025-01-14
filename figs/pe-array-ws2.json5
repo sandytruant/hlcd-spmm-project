@@ -1,0 +1,30 @@
+{
+  signal: [
+    ['Rhs',
+     {name: 'rhs_ready',    wave: '010..10........10..10.........'},
+     {name: 'rhs_start',    wave: '010..10........10..10.........', node: '.a...b.........c...d..........'},
+     {name: 'rhs_data',     wave: 'x3...6...x.....3...6...x......', data: [ 'rhs1',  'rhs2',  'rhs3', 'rhs4']},
+    ],
+    ['Lhs',
+     {name: 'lhs_ready_ns', wave: '0....10..10.10.....1.0........'},
+     {name: 'lhs_start',    wave: '0....10..10.10.....10.........', node: '.....e...f..g......h..........'},
+     {name: 'lhs_ws',       wave: 'x....4x..7x.4x.....7x..x......', data: [ 'ws=1',  'ws=0',  'ws=0',  'ws=1']},
+     {name: 'lhs_ptr',      wave: 'x....4x..7x.4x.....7x..x......', data: [ 'ptr1',  'ptr2',  'ptr3',  'ptr4']},
+     {name: 'lhs_col',      wave: 'x....4...7..4...x..7...x......', data: [ 'col1',  'col2',  'col3',  'col4']},
+     {name: 'lhs_data',     wave: 'x....4...7..4...x..7...x......', data: ['data1', 'data2', 'data3', 'data4']},
+    ],
+    ['Out',
+     {name: 'out_ready',    wave: '0.............10..10..10..10..'},
+     {name: 'out_start',    wave: '0.............10..10..10..10..'},
+     {name: 'out_data',     wave: 'x.............5...6...5...6...', data: ['out1=lhs1*rhs1', 'out2=lhs2*rhs1', 'out3=lhs3*rhs2', 'out4=lhs4*rhs3']}
+    ]
+  ],
+  edge: [
+     'a~>e 读入 rhs 结束，允许 lhs 输入',
+     'a~>b dbbuf，允许输入',
+     'f~>c rhs1 用完丢弃，允许 rhs3 读入',
+     'b~>g rhs2 已经 ready，可以立刻计算',
+     'g~>h lhs3 将 rhs2 丢弃，lhs4 需要等到 rhs3 读入完毕才能计算',
+     'c->d dbbuf，允许输入'
+  ]
+}

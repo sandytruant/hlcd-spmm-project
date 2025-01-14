@@ -201,6 +201,7 @@ static void generate_gtkw_file(const char * out, int num_el) {
 static bool test_it(const char * vcd_file, const std::vector<Data> & data) {
     std::cout << "Generate " << vcd_file << std::endl;
     auto contextp = std::make_unique<VerilatedContext>();
+    contextp->threads(1);
     contextp->traceEverOn(true);
     auto dut = std::make_unique<DUT>(&*contextp);
     dut->init();
@@ -242,9 +243,11 @@ int main(int argc, char ** argv) {
         }
         return res;
     };
-    test_it("trace/RedUnit/01-single.vcd", make_data(Data::init_single));
+    int score = 0;
+    score += test_it("trace/RedUnit/01-single.vcd", make_data(Data::init_single));
     test_it("trace/RedUnit/02-full.vcd", make_data(Data::init_full));
     test_it("trace/RedUnit/03-random.vcd", make_data(Data::init_random));
     test_it("trace/RedUnit/04-shuffle.vcd", make_data(Data::init_shuffle));
+    std::cerr << __FILE__ << " L1 SCORE: " << score << std::endl;
     return 0;
 }
