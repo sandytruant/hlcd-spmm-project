@@ -313,10 +313,140 @@ module SpMM(
     // num_el 总是赋值为 N
     assign num_el = `N;
 
-    assign lhs_ready_ns = 0;
+    // assign lhs_ready_ns = 0;
     assign lhs_ready_ws = 0;
     assign lhs_ready_os = 0;
     assign lhs_ready_wos = 0;
-    assign rhs_ready = 0;
-    assign out_ready = 0;
+    
+    data_t rhs_buffer[`N-1:0][`N-1:0];
+    data_t pe_out[`N-1:0][`N-1:0];
+    logic pe_start[`N-1:0];
+
+    logic [$clog2(`N/4)+1:0] rhs_buffer_counter;
+    logic [$clog2(`N/4)+1:0] out_buffer_counter;
+
+    logic [`lgN+1:0] pe_counter;
+
+    data_t out_buffer[`N-1:0][`N-1:0];
+
+    always_ff @(posedge clock) begin
+        if (reset) begin
+            rhs_ready <= 1;
+        end
+        else begin
+            rhs_ready <= 0;
+        end
+    end
+
+    always_ff @(posedge clock) begin
+        if (rhs_start) begin
+            rhs_buffer_counter <= 1;
+            for (int i = 0; i < 4; i++) begin
+                for (int j = 0; j < `N; j++) begin
+                    rhs_buffer[j][i] <= rhs_data[i][j];
+                end
+            end
+        end
+        else if (rhs_buffer_counter < `N/4 && rhs_buffer_counter > 0) begin
+            for (int i = 0; i < 4; i++) begin
+                for (int j = 0; j < `N; j++) begin
+                    rhs_buffer[j][i+rhs_buffer_counter*4] <= rhs_data[i][j];
+                end
+            end
+            rhs_buffer_counter <= rhs_buffer_counter + 1;
+        end
+        else if (rhs_buffer_counter == `N/4) begin
+            rhs_buffer_counter <= rhs_buffer_counter + 1;
+        end
+    end
+
+    always_ff @( posedge clock ) begin
+        if (rhs_buffer_counter == `N/4) begin
+            lhs_ready_ns <= 1;
+        end
+        else begin
+            lhs_ready_ns <= 0;
+        end
+    end
+
+    always_ff @(posedge clock) begin
+        if (rhs_buffer_counter == `N/4) begin
+            for (int i = 0; i < `N; i++) begin
+                pe_start[i] <= 1;
+            end
+        end
+        else begin
+            for (int i = 0; i < `N; i++) begin
+                pe_start[i] <= 0;
+            end
+        end
+    end
+
+    always_ff @(posedge clock) begin
+        if (lhs_start) begin
+            pe_counter <= 1;
+        end
+        if (pe_counter > 0) begin
+            pe_counter <= pe_counter + 1;
+        end
+    end
+
+    always_ff @(posedge clock) begin
+        for (int i = 0; i < `N; i++) begin
+            for (int j = 0; j < `N; j++) begin
+                if (pe_out[i][j] != 0) begin
+                    out_buffer[i][j] <= pe_out[i][j];
+                end
+            end
+        end
+    end
+
+    always_ff @(posedge clock) begin
+        if (pe_counter == `lgN + `N + 2) begin
+            out_buffer_counter <= 1;
+            for (int i = 0; i < 4; i++) begin
+                for (int j = 0; j < `N; j++) begin
+                    out_data[i][j] <= out_buffer[j][i];
+                end
+            end
+        end
+        else if (out_buffer_counter < `N/4 && out_buffer_counter > 0) begin
+            for (int i = 0; i < 4; i++) begin
+                for (int j = 0; j < `N; j++) begin
+                    out_data[i][j] <= out_buffer[j][i+out_buffer_counter*4];
+                end
+            end
+            out_buffer_counter <= out_buffer_counter + 1;
+        end
+        else if (out_buffer_counter == `N/4) begin
+            out_buffer_counter <= out_buffer_counter + 1;
+        end
+    end
+
+    always_ff @(posedge clock) begin
+        if (out_buffer_counter == `N/4) begin
+            out_ready <= 1;
+        end
+        else begin
+            out_ready <= 0;
+        end
+    end
+
+    generate
+        for (genvar i = 0; i < `N; i++) begin
+            PE pe_(
+                .clock(clock),
+                .reset(reset),
+                .lhs_start(pe_start[i]),
+                .lhs_ptr(lhs_ptr),
+                .lhs_col(lhs_col),
+                .lhs_data(lhs_data),
+                .rhs(rhs_buffer[i]),
+                .out(pe_out[i]),
+                .delay(),
+                .num_el()
+            );
+        end
+    endgenerate
+
 endmodule

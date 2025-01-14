@@ -298,7 +298,7 @@ int main() {
     test_it("trace/PE/03-eye.vcd", Data::new_with(&Data::init_eye, num_el));
     test_it("trace/PE/04-empty.vcd", Data::new_with(&Data::init_empty, num_el));
     test_it("trace/PE/05-linesep.vcd", Data::new_with(&Data::init_linesep, num_el));
-    // int Q0 = 0, Q1 = num_el / 4, Q2 = num_el / 2, Q3 = num_el * 3 / 4, Q4 = num_el;
+    int Q0 = 0, Q1 = num_el / 4, Q2 = num_el / 2, Q3 = num_el * 3 / 4, Q4 = num_el;
     // test_it("trace/PE/06-rand-Q1.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q0, Q1}));
     // test_it("trace/PE/07-rand-Q2.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q1, Q2}));
     // test_it("trace/PE/08-rand-Q3.vcd", Data::new_with(&Data::init_rand, num_el, Range{Q2, Q3}));
