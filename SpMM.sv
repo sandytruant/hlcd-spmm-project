@@ -416,6 +416,26 @@ module SpMM(
         end
     end
 
+    always_ff @( posedge clock ) begin : lhs_ready_ff
+        if (reset) begin
+            lhs_ready_ns <= 0;
+            lhs_ready_ws <= 0;
+        end 
+        else if (lhs_start) begin
+            lhs_ready_ns <= 0;
+            lhs_ready_ws <= 0;
+        end
+        else if (
+            (rhs_buffer_state[0] == 2 || rhs_buffer_state[1] == 2) && 
+            (out_buffer_state[0] == 0 || out_buffer_state[1] == 0) && 
+            (rhs_buffer_state[0] != 3 && rhs_buffer_state[1] != 3) &&
+            (out_buffer_state[0] != 1 && out_buffer_state[1] != 1)
+        ) begin
+            lhs_ready_ns <= 1;
+            lhs_ready_ws <= 1;
+        end
+    end
+
     always_ff @( posedge clock ) begin
         if (pe_counter == `lgN + `N + 3) begin
             if (out_buffer_state[0] == 1) begin
@@ -442,22 +462,11 @@ module SpMM(
         if (reset) begin
             lhs_ready_wos <= 0;
         end 
-        else if (lhs_start) begin
+        else if (lhs_start || lhs_os) begin
             lhs_ready_wos <= 0;
         end
-        else if (
-            (rhs_buffer_state[0] == 2 || rhs_buffer_state[1] == 2) && 
-            (out_buffer_state[0] == 0 || out_buffer_state[1] == 0) && 
-            (rhs_buffer_state[0] != 3 && rhs_buffer_state[1] != 3) &&
-            (out_buffer_state[0] != 1 && out_buffer_state[1] != 1)
-        ) begin
-            if (pe_counter == `lgN + `N + 3) begin
-                lhs_ready_wos <= 1;
-            end
-        end
-        
-        if (lhs_os && lhs_ws) begin
-            lhs_ready_wos <= 0;
+        else if (pe_counter == `lgN + `N + 3) begin
+            lhs_ready_wos <= 1;
         end
     end
 
@@ -604,26 +613,6 @@ module SpMM(
         end
         else if (rhs_buffer_counter == `N / 4) begin
             rhs_buffer_counter <= rhs_buffer_counter + 1;
-        end
-    end
-
-    always_ff @( posedge clock ) begin : lhs_ready_ff
-        if (reset) begin
-            lhs_ready_ns <= 0;
-            lhs_ready_ws <= 0;
-        end 
-        else if (lhs_start) begin
-            lhs_ready_ns <= 0;
-            lhs_ready_ws <= 0;
-        end
-        else if (
-            (rhs_buffer_state[0] == 2 || rhs_buffer_state[1] == 2) && 
-            (out_buffer_state[0] == 0 || out_buffer_state[1] == 0) && 
-            (rhs_buffer_state[0] != 3 && rhs_buffer_state[1] != 3) &&
-            (out_buffer_state[0] != 1 && out_buffer_state[1] != 1)
-        ) begin
-            lhs_ready_ns <= 1;
-            lhs_ready_ws <= 1;
         end
     end
 
