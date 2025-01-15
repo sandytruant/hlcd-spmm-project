@@ -7,13 +7,17 @@
 #include <memory>
 #include <numeric>
 #include <stdexcept>
+#include <random>
 
 namespace {
 
 struct Range {
     int start, stop;
     int gen() {
-        return rand() % (stop - start) + start;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(start, stop);
+        return dis(gen);
     }
 };
 
@@ -652,15 +656,15 @@ int main() {
     generate_gtkw_file("trace/SpMM/wave.gtkw", num_el);
     std::vector<Test*> tests {
         new NsOnepass(),
-        // new RhsDbBuf(),
-        // new OutDbBuf(),
-        // new RhsOutDbBuf(),
-        // new WSOnePass(),
-        // new WSOutDbBuf(),
-        // new WSPipe(),
-        // new OSOnePass(),
-        // new OSPipe(),
-        // new WOSOnePass(),
+        new RhsDbBuf(),
+        new OutDbBuf(),
+        new RhsOutDbBuf(),
+        new WSOnePass(),
+        new WSOutDbBuf(),
+        new WSPipe(),
+        new OSOnePass(),
+        new OSPipe(),
+        new WOSOnePass(),
     };
     int idx = 0;
     int score = 0;

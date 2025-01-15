@@ -8,6 +8,7 @@
 #include <numeric>
 #include <sstream>
 #include <stdexcept>
+#include <random>
 
 // #define CHISEL
 
@@ -16,7 +17,10 @@ namespace {
 struct Range {
     int start, stop;
     int gen() {
-        return rand() % (stop - start) + start;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(start, stop);
+        return dis(gen);
     }
 };
 

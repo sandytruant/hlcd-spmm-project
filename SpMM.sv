@@ -260,7 +260,7 @@ module PE(
                 out[i] <= red_out_valid[i] ? (red_out_data[i] + halo_data) : 0;
             end
             else begin
-                out[i] <= red_out_valid[i] ? red_out_data[i] : 0;
+                out[i] <= (red_out_valid[i] == 1 && (halo_idx_out != i || halo_valid_out == 0)) ? red_out_data[i] : 0;
             end
         end
     end
@@ -286,6 +286,8 @@ module PE(
             red_split[i] <= 0;
             red_out_idx[i] <= 0;
             red_valid[i] <= 0;
+            halo_valid_in <= 0;
+            halo_idx_in <= 0;
         end
         if (lhs_start) begin
             for (int i = 0; i < `N; i++) begin
@@ -394,9 +396,70 @@ module SpMM(
     data_t out_buffer[1:0][`N-1:0][`N-1:0];
 
     logic [1:0] rhs_buffer_state[1:0]; // 0: available, 1: loading, 2: loaded , 3: calculating
-    logic [1:0] out_buffer_state[1:0]; // 0: available, 1: calculating, 2: outputting
+    logic [1:0] out_buffer_state[1:0]; // 0: available, 1: calculating, 2: calculated, 3: outputting
 
     logic rhs_buffer_select;
+
+    logic out_buffer_os[1:0];
+
+    logic calc_os;
+
+    always_ff @( posedge lhs_os ) begin
+        if (lhs_os) begin
+            calc_os <= 1;
+        end
+    end
+
+    always_ff @( posedge clock ) begin
+        if (pe_counter == `lgN + `N + 3 && lhs_os == 0) begin
+            calc_os <= 0;
+        end
+    end
+
+    always_ff @( posedge clock ) begin
+        if (pe_counter == `lgN + `N + 3) begin
+            if (out_buffer_state[0] == 1) begin
+                out_buffer_os[0] <= 1;
+                out_buffer_os[1] <= 0;
+            end
+            else if (out_buffer_state[1] == 1) begin
+                out_buffer_os[0] <= 0;
+                out_buffer_os[1] <= 1;
+            end
+            else begin
+                out_buffer_os[0] <= 0;
+                out_buffer_os[1] <= 0;
+            end
+
+            lhs_ready_os <= 1;
+        end
+        if (lhs_os) begin
+            lhs_ready_os <= 0;
+        end
+    end
+
+    always_ff @( posedge clock ) begin
+        if (reset) begin
+            lhs_ready_wos <= 0;
+        end 
+        else if (lhs_start) begin
+            lhs_ready_wos <= 0;
+        end
+        else if (
+            (rhs_buffer_state[0] == 2 || rhs_buffer_state[1] == 2) && 
+            (out_buffer_state[0] == 0 || out_buffer_state[1] == 0) && 
+            (rhs_buffer_state[0] != 3 && rhs_buffer_state[1] != 3) &&
+            (out_buffer_state[0] != 1 && out_buffer_state[1] != 1)
+        ) begin
+            if (pe_counter == `lgN + `N + 3) begin
+                lhs_ready_wos <= 1;
+            end
+        end
+        
+        if (lhs_os && lhs_ws) begin
+            lhs_ready_wos <= 0;
+        end
+    end
 
     always_ff @(posedge clock) begin : rhs_ready_ff
         if (reset) begin
@@ -441,25 +504,45 @@ module SpMM(
         end
         if (pe_counter == `lgN + `N + 3) begin
             if (rhs_buffer_state[0] == 3) begin
-                rhs_buffer_state[0] <= 0;
+                if (lhs_ws) begin
+                    rhs_buffer_state[0] <= 2;
+                end
+                else begin
+                    rhs_buffer_state[0] <= 0;
+                end
             end
             else if (rhs_buffer_state[1] == 3) begin
-                rhs_buffer_state[1] <= 0;
+                if (lhs_ws) begin
+                    rhs_buffer_state[1] <= 2;
+                end
+                else begin
+                    rhs_buffer_state[1] <= 0;
+                end
             end
         end
     end
 
-    always_ff @( posedge clock ) begin : out_buffer_state_ff
+    always_ff @( posedge clock or posedge out_start ) begin : out_buffer_state_ff
         if (reset) begin
             out_buffer_state[0] <= 0;
             out_buffer_state[1] <= 0;
         end
         else if (lhs_start) begin
-            if (out_buffer_state[0] == 0) begin
-                out_buffer_state[0] <= 1;
+            if (lhs_os == 1) begin
+                if (out_buffer_state[0] == 2 && out_buffer_os[0] == 1) begin
+                    out_buffer_state[0] <= 1;
+                end
+                if (out_buffer_state[1] == 2 && out_buffer_os[1] == 1) begin
+                    out_buffer_state[1] <= 1;
+                end
             end
-            else if (out_buffer_state[1] == 0) begin
-                out_buffer_state[1] <= 1;
+            else begin
+                if (out_buffer_state[0] == 0) begin
+                    out_buffer_state[0] <= 1;
+                end
+                else if (out_buffer_state[1] == 0) begin
+                    out_buffer_state[1] <= 1;
+                end
             end
         end
         if (pe_counter == `lgN + `N + 3) begin
@@ -470,14 +553,23 @@ module SpMM(
                 out_buffer_state[1] <= 2;
             end
         end
-        if (out_buffer_counter == `N / 4) begin
+        if (out_start) begin
             if (out_buffer_state[0] == 2) begin
-                out_buffer_state[0] <= 0;
+                out_buffer_state[0] <= 3;
             end
             else if (out_buffer_state[1] == 2) begin
+                out_buffer_state[1] <= 3;
+            end
+        end
+        if (out_buffer_counter == `N / 4) begin
+            if (out_buffer_state[0] == 3) begin
+                out_buffer_state[0] <= 0;
+            end
+            else if (out_buffer_state[1] == 3) begin
                 out_buffer_state[1] <= 0;
             end
         end
+            
     end
 
     always_ff @(posedge clock) begin
@@ -518,15 +610,30 @@ module SpMM(
     always_ff @( posedge clock ) begin : lhs_ready_ff
         if (reset) begin
             lhs_ready_ns <= 0;
+            lhs_ready_ws <= 0;
         end 
-        else if (lhs_start && lhs_ready_ns) begin
+        else if (lhs_start) begin
             lhs_ready_ns <= 0;
+            lhs_ready_ws <= 0;
         end
-        else if ((rhs_buffer_state[0] == 2 || rhs_buffer_state[1] == 2) && 
-                 (out_buffer_state[0] == 0 || out_buffer_state[1] == 0) && 
-                 (rhs_buffer_state[0] != 3 && rhs_buffer_state[1] != 3) &&
-                 (out_buffer_state[0] != 1 && out_buffer_state[1] != 1)) begin
+        else if (
+            (rhs_buffer_state[0] == 2 || rhs_buffer_state[1] == 2) && 
+            (out_buffer_state[0] == 0 || out_buffer_state[1] == 0) && 
+            (rhs_buffer_state[0] != 3 && rhs_buffer_state[1] != 3) &&
+            (out_buffer_state[0] != 1 && out_buffer_state[1] != 1)
+        ) begin
             lhs_ready_ns <= 1;
+            lhs_ready_ws <= 1;
+        end
+    end
+
+    always_ff @( posedge clock or posedge lhs_os ) begin // modified
+        if (
+            (rhs_buffer_state[0] == 2 || rhs_buffer_state[1] == 2) && 
+            (out_buffer_state[0] == 0 || out_buffer_state[1] == 0) && 
+            (rhs_buffer_state[0] != 3 && rhs_buffer_state[1] != 3) &&
+            (out_buffer_state[0] != 1 && out_buffer_state[1] != 1)
+        ) begin
             rhs_buffer_select <= rhs_buffer_state[0] == 2 ? 0 : 1;
         end
     end
@@ -557,41 +664,64 @@ module SpMM(
     end
 
     always_ff @(posedge clock) begin
-        for (int i = 0; i < `N; i++) begin
-            for (int j = 0; j < `N; j++) begin
-                if (pe_out[i][j] != 0) begin
-                    if (out_buffer_state[0] == 1) begin
-                        out_buffer[0][i][j] <= pe_out[i][j];
+        if (lhs_start) begin
+            for (int sel = 0; sel < 2; sel++) begin
+                for (int i = 0; i < `N; i++) begin
+                    for (int j = 0; j < `N; j++) begin
+                        if (out_buffer_state[sel] == 0) begin
+                            out_buffer[sel][i][j] <= 0;
+                        end
                     end
-                    else if (out_buffer_state[1] == 1) begin
-                        out_buffer[1][i][j] <= pe_out[i][j];
+                end
+            end
+        end
+        else begin
+            for (int i = 0; i < `N; i++) begin
+                for (int j = 0; j < `N; j++) begin
+                    if (pe_out[i][j] != 0) begin
+                        if (out_buffer_state[0] == 1) begin
+                            if (calc_os == 1 && out_buffer_os[0] == 1) begin
+                                out_buffer[0][i][j] <= pe_out[i][j] + out_buffer[0][i][j];
+                            end
+                            else begin
+                                out_buffer[0][i][j] <= pe_out[i][j];
+                            end
+                        end
+                        else if (out_buffer_state[1] == 1) begin
+                            if (calc_os == 1 && out_buffer_os[1] == 1) begin
+                                out_buffer[1][i][j] <= pe_out[i][j] + out_buffer[1][i][j];
+                            end
+                            else begin
+                                out_buffer[1][i][j] <= pe_out[i][j];
+                            end
+                        end
                     end
                 end
             end
         end
     end
 
-    always_ff @(posedge clock) begin
-        if (pe_counter == `lgN + `N + 3) begin
+    always_ff @(posedge clock or posedge out_start) begin
+        if (out_start) begin
             out_buffer_counter <= 1;
             for (int i = 0; i < 4; i++) begin
                 for (int j = 0; j < `N; j++) begin
-                    if (out_buffer_state[0] == 1) begin
+                    if (out_buffer_state[0] == 2) begin
                         out_data[i][j] <= out_buffer[0][j][i];
                     end
-                    else if (out_buffer_state[1] == 1) begin
+                    else if (out_buffer_state[1] == 2) begin
                         out_data[i][j] <= out_buffer[1][j][i];
                     end
                 end
             end
         end
-        else if (out_buffer_counter < `N/4 && out_buffer_counter > 0) begin
+        if (out_buffer_counter < `N/4 && out_buffer_counter > 0) begin
             for (int i = 0; i < 4; i++) begin
                 for (int j = 0; j < `N; j++) begin
-                    if (out_buffer_state[0] == 2) begin
+                    if (out_buffer_state[0] == 3) begin
                         out_data[i][j] <= out_buffer[0][j][i+out_buffer_counter*4];
                     end
-                    else if (out_buffer_state[1] == 2) begin
+                    else if (out_buffer_state[1] == 3) begin
                         out_data[i][j] <= out_buffer[1][j][i+out_buffer_counter*4];
                     end
                 end
@@ -610,7 +740,7 @@ module SpMM(
         if (pe_counter == `lgN + `N + 3) begin
             out_ready <= 1;
         end
-        else if (out_start && out_ready) begin
+        else if (out_start || lhs_os) begin
             out_ready <= 0;
         end
     end
