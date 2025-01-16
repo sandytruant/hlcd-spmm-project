@@ -40,6 +40,18 @@ module mul_(
     end
 endmodule
 
+/*
+function automatic int level(input int adder_idx);
+    int count = 0;
+    int temp = adder_idx + 1; // 加1后的值
+    while (temp % 2 == 0) begin
+        count++;
+        temp = temp / 2; // 除以2
+    end
+    return count;
+endfunction
+*/
+
 module RedUnit(
     input   logic               clock,
                                 reset,
@@ -59,58 +71,200 @@ module RedUnit(
     // num_el 总是赋值为 N
     assign num_el = `N;
     // delay 你需要自己为其赋值，表示电路的延迟
-    assign delay = `lgN + 1;
+    assign delay = `lgN;
 
-    data_t add_a[`lgN-1:0][`N-1:0];
-    data_t add_b[`lgN-1:0][`N-1:0];
-    data_t add_out[`lgN-1:0][`N-1:0];
+    logic add_en[`lgN-1:0][`N-2:0];
+    logic bypass_en[`lgN-1:0][`N-2:0];
+    data_t add_out[`lgN-1:0][`N-2:0];
+    data_t bypass_out[`lgN-1:0][`N-2:0][1:0];
+    logic [`lgN-1:0] vec_idx[`lgN-1:0][`N-1:0];
 
-    data_t sub_a[`N-1:0];
-    data_t sub_b[`N-1:0];
-    data_t sub_out[`N-1:0];
+    int idx_count;
+    int l_sel;
+    int r_sel;
 
-    logic pipeline_valid[`lgN:0][`N-1:0];
-
-    assign out_data = sub_out;
-    assign out_valid = pipeline_valid[`lgN];
-
-    logic pipeline_split[`lgN-1:0][`N-1:0];
-    logic [`lgN-1:0] pipeline_out_idx[`lgN-1:0][`N-1:0];
-
-    logic [`lgN-1:0] pipeline_halo_idx[`lgN:0];
-    logic pipeline_halo_valid[`lgN:0];
-
-    always_ff @( posedge clock ) begin
-        for (int i = 0; i < `lgN; i++) begin
-            pipeline_halo_idx[i+1] <= pipeline_halo_idx[i];
-            pipeline_halo_valid[i+1] <= pipeline_halo_valid[i];
+    int level[`N-1:0];
+    initial begin
+        for (int i = 0; i < `N; i++) begin
+            int count = 0;
+            int temp = i + 1;
+            while (temp % 2 == 0) begin
+                temp = temp / 2;
+                count++;
+            end
+            level[i] = count;
         end
-        pipeline_halo_idx[0] <= halo_idx_in;
-        pipeline_halo_valid[0] <= halo_valid_in;
     end
-
-    always_comb begin
-        halo_idx_out = pipeline_halo_idx[`lgN];
-        halo_valid_out = pipeline_halo_valid[`lgN];
-    end
+    
 
     always_ff @( posedge clock ) begin
-        for (int i = 0; i < `lgN; i++) begin
-            for (int j = 0; j < `N; j++) begin
+        if (reset) begin
+            for (int i = 0; i < `lgN; i++) begin
+                for (int j = 0; j < `N-1; j++) begin
+                    add_en[i][j] <= 0;
+                    bypass_en[i][j] <= 0;
+                    add_out[i][j] <= 0;
+                    bypass_out[i][j][0] <= 0;
+                    bypass_out[i][j][1] <= 0;
+                end
+                for (int j = 0; j < `N; j++) begin
+                    vec_idx[i][j] <= 0;
+                end
+            end
+        end
+        else begin
+            for (int i = 0; i < `lgN; i++) begin
                 if (i == 0) begin
-                    pipeline_split[i][j] <= split[j];
-                    pipeline_out_idx[i][j] <= out_idx[j];
+                    // idx
+                    idx_count = 0;
+                    for (int adder_idx = 0; adder_idx < `N - 1; adder_idx++) begin
+                        vec_idx[i][adder_idx] <= idx_count;
+                        if (split[adder_idx] == 1) begin
+                            idx_count = idx_count + 1;
+                        end
+                    end
+                    vec_idx[i][`N-1] <= idx_count;
+
+                    // others
+                    for (int adder_idx = 0; adder_idx < `N - 1; adder_idx += 2) begin
+                        add_en[i][adder_idx] <= 0;
+                        bypass_en[i][adder_idx] <= 0;
+                        if (split[adder_idx] == 1) begin
+                            bypass_en[i][adder_idx] <= 1;
+                            bypass_out[i][adder_idx][0] <= data[adder_idx];
+                            bypass_out[i][adder_idx][1] <= data[adder_idx+1];
+                        end
+                        else begin
+                            add_en[i][adder_idx] <= 1;
+                            add_out[i][adder_idx] <= data[adder_idx] + data[adder_idx+1];
+                        end
+                    end
                 end
                 else begin
-                    pipeline_split[i][j] <= pipeline_split[i-1][j];
-                    pipeline_out_idx[i][j] <= pipeline_out_idx[i-1][j];
+                    // pass vec_idx
+                    for (int j = 0; j < `N; j++) begin
+                        vec_idx[i][j] <= vec_idx[i-1][j];
+                    end
+
+                    for (int adder_idx = 0; adder_idx < `N - 1; adder_idx++) begin
+                        if (level[adder_idx] < i) begin
+                            // pass lower level data
+                            add_en[i][adder_idx] <= add_en[i-1][adder_idx];
+                            bypass_en[i][adder_idx] <= bypass_en[i-1][adder_idx];
+                            add_out[i][adder_idx] <= add_out[i-1][adder_idx];
+                            bypass_out[i][adder_idx] <= bypass_out[i-1][adder_idx];
+                        end
+                        else if (level[adder_idx] == i) begin
+                            add_en[i][adder_idx] <= 1;
+                            bypass_en[i][adder_idx] <= 0;
+
+                            // left select
+                            l_sel = adder_idx - (1 << (i-1));
+                            for (int j = 0; j < i; j++) begin
+                                int l_idx = adder_idx - (1 << j);
+                                if (
+                                    (vec_idx[i-1][l_idx] != vec_idx[i-1][adder_idx] && bypass_en[i-1][l_idx] == 0) ||
+                                    (vec_idx[i-1][l_idx] == vec_idx[i-1][adder_idx] && add_en[i-1][l_idx] == 0 && bypass_en[i-1][l_idx] == 0)
+                                ) begin
+                                    if (j == 0) begin
+                                        add_en[i][adder_idx] <= 0;
+                                    end
+                                    else begin
+                                        l_sel = adder_idx - (1 << (j - 1));
+                                    end
+                                    break;
+                                end
+                            end
+
+                            // right select
+                            r_sel = adder_idx + (1 << (i-1));
+                            for (int j = 0; j < i; j++) begin
+                                int r_idx = adder_idx + (1 << j);
+                                if (
+                                    (vec_idx[i-1][r_idx] != vec_idx[i-1][adder_idx]) ||
+                                    (vec_idx[i-1][r_idx] == vec_idx[i-1][adder_idx] && add_en[i-1][r_idx] == 0 && bypass_en[i-1][r_idx] == 0)
+                                ) begin
+                                    if (j == 0) begin
+                                        add_en[i][adder_idx] <= 0;
+                                    end
+                                    else begin
+                                        r_sel = adder_idx + (1 << (j - 1));
+                                    end
+                                    break;
+                                end
+                            end
+
+                            if (bypass_en[i-1][l_sel] == 1 && bypass_en[i-1][r_sel] == 1) begin
+                                add_out[i][adder_idx] <= bypass_out[i-1][l_sel][1] + bypass_out[i-1][r_sel][0];
+                            end
+                            else if (bypass_en[i-1][l_sel] == 1 && bypass_en[i-1][r_sel] == 0) begin
+                                add_out[i][adder_idx] <= bypass_out[i-1][l_sel][1] + add_out[i-1][r_sel];
+                            end
+                            else if (bypass_en[i-1][l_sel] == 0 && bypass_en[i-1][r_sel] == 1) begin
+                                add_out[i][adder_idx] <= add_out[i-1][l_sel] + bypass_out[i-1][r_sel][0];
+                            end
+                            else begin
+                                add_out[i][adder_idx] <= add_out[i-1][l_sel] + add_out[i-1][r_sel];
+                            end
+                        end
+                    end
                 end
             end
         end
     end
 
+    // output
+    int vecID;
+    int max_level;
+    int out_adder_idx;
+    always_comb begin
+        for (int i = 0; i < `N; i++) begin
+            vecID = vec_idx[`lgN-1][pipeline_out_idx[`lgN-1][i]];
+            max_level = -1;
+            out_adder_idx = pipeline_out_idx[`lgN-1][i];
+            for (int j = pipeline_out_idx[`lgN-1][i] - 1; j >= 0; j--) begin
+                if (vec_idx[`lgN-1][j] != vecID) begin
+                    break;
+                end
+                else if (level[j] > max_level && add_en[`lgN-1][j] == 1) begin
+                    max_level = level[j];
+                    out_adder_idx = j;
+                end
+            end
+
+            if (out_adder_idx == pipeline_out_idx[`lgN-1][i]) begin
+                if (out_adder_idx % 2 == 0) begin
+                    out_data[i] = bypass_out[`lgN-1][out_adder_idx][0];
+                end
+                else begin
+                    out_data[i] = bypass_out[`lgN-1][out_adder_idx-1][1];
+                end
+            end
+            else begin
+                out_data[i] = add_out[`lgN-1][out_adder_idx];
+            end
+        end
+    end
+    
+    // out_idx
+    logic [`lgN-1:0] pipeline_out_idx[`lgN-1:0][`N-1:0];
+    always_ff @( posedge clock ) begin
+        for (int i = 0; i < `lgN; i++) begin
+            if (i == 0) begin
+                pipeline_out_idx[i] <= out_idx;
+            end
+            else begin
+                pipeline_out_idx[i] <= pipeline_out_idx[i-1];
+            end
+        end
+    end
+    
+    // out valid
+    logic pipeline_valid[`lgN-1:0][`N-1:0];
+    assign out_valid = pipeline_valid[`lgN-1];
+
     always_ff @(posedge clock) begin
-        for (int i = 0; i <= `lgN; i++) begin
+        for (int i = 0; i < `lgN; i++) begin
             for (int j = 0; j < `N; j++) begin
                 if (i == 0) begin
                     pipeline_valid[i][j] <= valid[j];
@@ -122,90 +276,23 @@ module RedUnit(
         end
     end
 
-    generate
-        for (genvar i = 0; i < `lgN; i++) begin
-            for (genvar j = 0; j < `N; j++) begin
-                add_ add_(
-                    .clock(clock),
-                    .a(add_a[i][j]),
-                    .b(add_b[i][j]),
-                    .out(add_out[i][j])
-                );
-            end
-        end
-    endgenerate
+    // halo
+    logic [`lgN-1:0] pipeline_halo_idx[`lgN-1:0];
+    logic pipeline_halo_valid[`lgN-1:0];
 
-    generate
-        for (genvar j = 0; j < `N; j++) begin
-            sub_ sub_(
-                .clock(clock),
-                .a(sub_a[j]),
-                .b(sub_b[j]),
-                .out(sub_out[j])
-            );
+    always_ff @( posedge clock ) begin
+        for (int i = 0; i < `lgN - 1; i++) begin
+            pipeline_halo_idx[i+1] <= pipeline_halo_idx[i];
+            pipeline_halo_valid[i+1] <= pipeline_halo_valid[i];
         end
-    endgenerate
-
-    always_comb begin
-        for (int i = 0; i < `lgN; i++) begin
-            for (int j = 0; j < `N; j++) begin
-                if (i == 0) begin
-                    assign add_a[i][j] = data[j];
-                    assign add_b[i][j] = j > 0 ? data[j-1] : 0;
-                end
-                else begin
-                    assign add_a[i][j] = add_out[i-1][j];
-                    assign add_b[i][j] = j >= (1<<i) ? add_out[i-1][j-(1<<i)] : 0;
-                end
-            end
-        end
-    end
-
-    logic first_one[`N-1:0];
-    logic found;
-    logic [`lgN-1:0] last_split[`N-1:0];
-
-    // Calculate the last split of j
-    always_comb begin
-        assign found = 0;
-        for (int i = 0; i < `N; i++) begin
-            first_one[i] = 0;
-            last_split[i] = 0;
-        end
-        for (int j = 0; j < `N; j++) begin
-            if (pipeline_split[`lgN-1][j] == 1) begin
-                if (found == 0) begin
-                    first_one[j] = 1;
-                    found = 1;
-                end
-                if (j < `N-1) begin
-                    last_split[j+1] = `lgN'(j);
-                end
-            end
-            else begin
-                if (j < `N-1) begin
-                    last_split[j+1] = last_split[j];
-                end
-            end
-        end
+        pipeline_halo_idx[0] <= halo_idx_in;
+        pipeline_halo_valid[0] <= halo_valid_in;
     end
 
     always_comb begin
-        for (int j = 0; j < `N; j++) begin
-            assign sub_a[j] = 0;
-            assign sub_b[j] = 0;
-            if (pipeline_split[`lgN-1][pipeline_out_idx[`lgN-1][j]] == 1) begin
-                assign sub_a[j] = add_out[`lgN-1][pipeline_out_idx[`lgN-1][j]];
-                if (first_one[pipeline_out_idx[`lgN-1][j]] == 1) begin
-                    assign sub_b[j] = 0;
-                end
-                else begin
-                    assign sub_b[j] = add_out[`lgN-1][last_split[pipeline_out_idx[`lgN-1][j]]];
-                end
-            end
-        end
-    end
-            
+        halo_idx_out = pipeline_halo_idx[`lgN-1];
+        halo_valid_out = pipeline_halo_valid[`lgN-1];
+    end     
 endmodule
 
 module PE(
@@ -223,7 +310,7 @@ module PE(
     // num_el 总是赋值为 N
     assign num_el = `N;
     // delay 你需要自己为其赋值，表示电路的延迟
-    assign delay = `lgN + 3;
+    assign delay = `lgN + 2;
 
     logic [`lgN:0] counter;
     logic [`dbLgN-1:0] ptr[`N-1:0];
@@ -411,7 +498,7 @@ module SpMM(
     end
 
     always_ff @( posedge clock ) begin
-        if (pe_counter == `lgN + `N + 3 && lhs_os == 0) begin
+        if (pe_counter == `lgN + `N + 2 && lhs_os == 0) begin
             calc_os <= 0;
         end
     end
@@ -437,7 +524,7 @@ module SpMM(
     end
 
     always_ff @( posedge clock ) begin
-        if (pe_counter == `lgN + `N + 3) begin
+        if (pe_counter == `lgN + `N + 2) begin
             if (out_buffer_state[0] == 1) begin
                 out_buffer_os[0] <= 1;
                 out_buffer_os[1] <= 0;
@@ -465,7 +552,7 @@ module SpMM(
         else if (lhs_start || lhs_os) begin
             lhs_ready_wos <= 0;
         end
-        else if (pe_counter == `lgN + `N + 3) begin
+        else if (pe_counter == `lgN + `N + 2) begin
             lhs_ready_wos <= 1;
         end
     end
@@ -511,7 +598,7 @@ module SpMM(
                 rhs_buffer_state[1] <= 3;
             end
         end
-        if (pe_counter == `lgN + `N + 3) begin
+        if (pe_counter == `lgN + `N + 2) begin
             if (rhs_buffer_state[0] == 3) begin
                 if (lhs_ws) begin
                     rhs_buffer_state[0] <= 2;
@@ -554,7 +641,7 @@ module SpMM(
                 end
             end
         end
-        if (pe_counter == `lgN + `N + 3) begin
+        if (pe_counter == `lgN + `N + 2) begin
             if (out_buffer_state[0] == 1) begin
                 out_buffer_state[0] <= 2;
             end
@@ -726,7 +813,7 @@ module SpMM(
         if (reset) begin
             out_ready <= 0;
         end
-        if (pe_counter == `lgN + `N + 3) begin
+        if (pe_counter == `lgN + `N + 2) begin
             out_ready <= 1;
         end
         else if (out_start || lhs_os) begin
